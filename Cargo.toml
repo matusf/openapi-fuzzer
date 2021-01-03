@@ -9,3 +9,8 @@ edition = "2018"
 [dependencies]
 argh = "0.1.4"
 url = "2.2.0"
+anyhow = "1.0.37"
+openapiv3 = "0.3.2"
+serde = "1.0"
+serde_yaml = "0.8"
+ureq = "1.5.4"

@@ -1,4 +1,6 @@
+use anyhow::{Context, Result};
 use argh::FromArgs;
+use openapiv3::{OpenAPI, PathItem, ReferenceOr};
 use std::path::PathBuf;
 use url::Url;
 
@@ -14,7 +16,27 @@ struct Args {
     url: Url,
 }
 
-fn main() {
+fn send_request(url: &Url, path: &str, item: &PathItem) -> Result<()> {
+    let path = url.join(path)?;
+    let response = item
+        .get
+        .as_ref()
+        .map(|operation| ureq::get(&path.to_string()).call());
+
+    println!("{:?}", response);
+    Ok(())
+}
+
+fn main() -> Result<()> {
     let args: Args = argh::from_env();
-    println!("{:?}", args);
+    let specfile = std::fs::read_to_string(args.spec)?;
+    let schema: OpenAPI = serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
+
+    for (path, ref_or_item) in schema.paths.iter() {
+        match ref_or_item {
+            ReferenceOr::Item(item) => send_request(&args.url, path, item)?,
+            ReferenceOr::Reference { .. } => todo!(),
+        };
+    }
+    Ok(())
 }
