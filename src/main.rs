@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use argh::FromArgs;
-use openapiv3::{OpenAPI, PathItem, ReferenceOr};
+use openapi_utils::{ReferenceOrExt, SpecExt};
+use openapiv3::*;
 use std::path::PathBuf;
 use url::Url;
 
@@ -29,14 +30,11 @@ fn send_request(url: &Url, path: &str, item: &PathItem) -> Result<()> {
 
 fn main() -> Result<()> {
     let args: Args = argh::from_env();
-    let specfile = std::fs::read_to_string(args.spec)?;
+    let specfile = std::fs::read_to_string(&args.spec)?;
     let schema: OpenAPI = serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
 
-    for (path, ref_or_item) in schema.paths.iter() {
-        match ref_or_item {
-            ReferenceOr::Item(item) => send_request(&args.url, path, item)?,
-            ReferenceOr::Reference { .. } => todo!(),
-        };
+    for (path, ref_or_item) in schema.deref_all().paths.iter() {
+        send_request(&args.url, path, ref_or_item.to_item_ref())?
     }
     Ok(())
 }
