@@ -26,7 +26,7 @@ fn fuzz_operation(url: &Url, path: &str, operation: &Operation) -> Result<()> {
     let mut cookies: Vec<(&str, String)> = Vec::new();
 
     // Set-up random data generator
-    let mut seed = [0u8, 42];
+    let mut seed = [0u8; 2048];
     thread_rng().fill(&mut seed[..]);
     let mut generator = Unstructured::new(&seed);
 
@@ -53,11 +53,8 @@ fn fuzz_operation(url: &Url, path: &str, operation: &Operation) -> Result<()> {
     }
 
     let mut path_with_params = path.to_owned();
-    for (name, value) in dbg!(path_params) {
-        println!("{:?}", path_with_params);
-        println!("{:?} = {:?}", format!("{{{}}}", name), value);
+    for (name, value) in path_params {
         path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
-        println!("{:?}", path_with_params);
     }
 
     let mut request = ureq::get(&url.join(&path_with_params)?.to_string());
@@ -76,6 +73,27 @@ fn fuzz_operation(url: &Url, path: &str, operation: &Operation) -> Result<()> {
 
 fn fuzz_path(url: &Url, path: &str, item: &PathItem) -> Result<()> {
     if let Some(operation) = item.get.as_ref() {
+        fuzz_operation(url, path, operation)?
+    }
+    if let Some(operation) = item.put.as_ref() {
+        fuzz_operation(url, path, operation)?
+    }
+    if let Some(operation) = item.post.as_ref() {
+        fuzz_operation(url, path, operation)?
+    }
+    if let Some(operation) = item.delete.as_ref() {
+        fuzz_operation(url, path, operation)?
+    }
+    if let Some(operation) = item.options.as_ref() {
+        fuzz_operation(url, path, operation)?
+    }
+    if let Some(operation) = item.head.as_ref() {
+        fuzz_operation(url, path, operation)?
+    }
+    if let Some(operation) = item.patch.as_ref() {
+        fuzz_operation(url, path, operation)?
+    }
+    if let Some(operation) = item.trace.as_ref() {
         fuzz_operation(url, path, operation)?
     }
     Ok(())
