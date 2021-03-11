@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use arbitrary::{Arbitrary, Unstructured};
 use argh::FromArgs;
 use openapi_utils::{ReferenceOrExt, SpecExt};
-use openapiv3::{Parameter, *};
-use rand::{thread_rng, Rng};
+use openapiv3::*;
+use rand::{distributions::Alphanumeric, Rng};
+use serde_json;
 use std::path::PathBuf;
 use url::Url;
 
@@ -19,16 +20,100 @@ struct Args {
     url: Url,
 }
 
-fn fuzz_operation(url: &Url, path: &str, operation: &Operation) -> Result<()> {
+#[derive(Debug)]
+struct Payload<'a> {
+    method: &'a str,
+    path: &'a str,
+    query_params: Vec<(&'a str, String)>,
+    path_params: Vec<(&'a str, String)>,
+    headers: Vec<(&'a str, String)>,
+    cookies: Vec<(&'a str, String)>,
+    body: Vec<serde_json::Value>,
+    responses: &'a Responses,
+}
+
+fn send_request(url: &Url, payload: &Payload) -> Result<ureq::Response> {
+    let mut path_with_params = payload.path.to_owned();
+    for (name, value) in payload.path_params.iter() {
+        path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
+    }
+
+    let mut request = ureq::request_url(payload.method, &url.join(&path_with_params)?);
+
+    for (param, value) in payload.query_params.iter() {
+        request = request.query(param, &value)
+    }
+
+    for (header, value) in payload.headers.iter() {
+        request = request.set(header, &value)
+    }
+
+    if payload.body.len() > 0 {
+        // Ok(request.send_json(payload.body[0])?)
+        Ok(request.call()?)
+    } else {
+        Ok(request.call()?)
+    }
+}
+
+fn generate_json_object(object: &ObjectType, gen: &mut Unstructured) -> Result<serde_json::Value> {
+    let mut json_object = serde_json::Map::with_capacity(object.properties.len());
+    for (name, schema) in &object.properties {
+        let schema_kind = &schema.to_item_ref().schema_kind;
+        json_object.insert(name.clone(), schema_kind_to_json(schema_kind, gen)?);
+    }
+    Ok(serde_json::Value::Object(json_object))
+}
+
+fn generate_json_array(array: &ArrayType, gen: &mut Unstructured) -> Result<serde_json::Value> {
+    let items = array.items.to_item_ref();
+    let (min, max) = (array.min_items.unwrap_or(1), array.max_items.unwrap_or(10));
+    let json_array = (min..=max)
+        .map(|_| schema_kind_to_json(&items.schema_kind, gen))
+        .collect::<Result<Vec<serde_json::Value>>>();
+    Ok(serde_json::Value::Array(json_array?))
+}
+
+fn schema_type_to_json(schema_type: &Type, gen: &mut Unstructured) -> Result<serde_json::Value> {
+    match schema_type {
+        Type::String(_string_type) => Ok(ureq::json!(String::arbitrary(gen)?)),
+        Type::Number(_number_type) => Ok(ureq::json!(f64::arbitrary(gen)?)),
+        Type::Integer(_integer_type) => Ok(ureq::json!(i64::arbitrary(gen)?)),
+        Type::Object(object_type) => generate_json_object(object_type, gen),
+        Type::Array(array_type) => generate_json_array(array_type, gen),
+        Type::Boolean {} => Ok(ureq::json!(bool::arbitrary(gen)?)),
+    }
+}
+
+fn schema_kind_to_json(
+    schema_kind: &SchemaKind,
+    gen: &mut Unstructured,
+) -> Result<serde_json::Value> {
+    match schema_kind {
+        SchemaKind::Any(_any) => todo!(),
+        SchemaKind::Type(schema_type) => Ok(schema_type_to_json(schema_type, gen)?),
+        SchemaKind::OneOf { .. } => todo!(),
+        SchemaKind::AnyOf { .. } => todo!(),
+        SchemaKind::AllOf { .. } => todo!(),
+    }
+}
+
+fn prepare_request<'a>(
+    method: &'a str,
+    path: &'a str,
+    operation: &'a Operation,
+) -> Result<Payload<'a>> {
     let mut query_params: Vec<(&str, String)> = Vec::new();
     let mut path_params: Vec<(&str, String)> = Vec::new();
     let mut headers: Vec<(&str, String)> = Vec::new();
     let mut cookies: Vec<(&str, String)> = Vec::new();
 
     // Set-up random data generator
-    let mut seed = [0u8; 2048];
-    thread_rng().fill(&mut seed[..]);
-    let mut generator = Unstructured::new(&seed);
+    let fuzzer_input: Vec<u8> = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(1024)
+        .collect();
+    let mut generator = Unstructured::new(&fuzzer_input);
 
     for ref_or_param in operation.parameters.iter() {
         match ref_or_param.to_item_ref() {
@@ -47,65 +132,84 @@ fn fuzz_operation(url: &Url, path: &str, operation: &Operation) -> Result<()> {
         }
     }
 
-    if let Some(ref_or_body) = operation.request_body.as_ref() {
-        let body = ref_or_body.to_item_ref();
-        println!("{:?}", body)
+    let body = operation.request_body.as_ref().map(|ref_or_body| {
+        let request_body = ref_or_body.to_item_ref();
+        request_body
+            .content
+            .iter()
+            .map(|(_, media)| {
+                media.schema.as_ref().map(|schema| {
+                    schema_kind_to_json(&schema.to_item_ref().schema_kind, &mut generator)
+                })
+            })
+            .flatten()
+            .collect::<Result<Vec<_>>>()
+    });
+
+    Ok(Payload {
+        method,
+        path,
+        query_params,
+        path_params,
+        headers,
+        cookies,
+        body: body.unwrap_or(Ok(Vec::new()))?,
+        responses: &operation.responses,
+    })
+}
+
+fn check_response(resp: &ureq::Response, payload: &Payload) -> Result<()> {
+    if !payload
+        .responses
+        .responses
+        .contains_key(&StatusCode::Code(resp.status()))
+    {
+        eprintln!(
+            "Unexpected status code: {}\nResponse {:?}",
+            resp.status(),
+            resp
+        );
     }
-
-    let mut path_with_params = path.to_owned();
-    for (name, value) in path_params {
-        path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
-    }
-
-    let mut request = ureq::get(&url.join(&path_with_params)?.to_string());
-
-    for (param, value) in query_params {
-        request = request.query(param, &value)
-    }
-
-    for (header, value) in headers {
-        request = request.set(header, &value)
-    }
-
-    println!("{:?}", request);
     Ok(())
 }
 
-fn fuzz_path(url: &Url, path: &str, item: &PathItem) -> Result<()> {
-    if let Some(operation) = item.get.as_ref() {
-        fuzz_operation(url, path, operation)?
+fn create_fuzz_payload<'a>(path: &'a str, item: &'a PathItem) -> Result<Vec<Payload<'a>>> {
+    // TODO: Pass parameters to fuzz operation
+    let operations = vec![
+        ("get", &item.get),
+        ("put", &item.put),
+        ("post", &item.post),
+        ("delete", &item.delete),
+        ("options", &item.options),
+        ("head", &item.head),
+        ("patch", &item.patch),
+        ("trace", &item.trace),
+    ];
+
+    let mut payloads = Vec::new();
+    for (method, op) in operations {
+        if let Some(operation) = op {
+            payloads.push(prepare_request(method, path, operation)?)
+        }
     }
-    if let Some(operation) = item.put.as_ref() {
-        fuzz_operation(url, path, operation)?
-    }
-    if let Some(operation) = item.post.as_ref() {
-        fuzz_operation(url, path, operation)?
-    }
-    if let Some(operation) = item.delete.as_ref() {
-        fuzz_operation(url, path, operation)?
-    }
-    if let Some(operation) = item.options.as_ref() {
-        fuzz_operation(url, path, operation)?
-    }
-    if let Some(operation) = item.head.as_ref() {
-        fuzz_operation(url, path, operation)?
-    }
-    if let Some(operation) = item.patch.as_ref() {
-        fuzz_operation(url, path, operation)?
-    }
-    if let Some(operation) = item.trace.as_ref() {
-        fuzz_operation(url, path, operation)?
-    }
-    Ok(())
+
+    Ok(payloads)
 }
 
 fn main() -> Result<()> {
     let args: Args = argh::from_env();
     let specfile = std::fs::read_to_string(&args.spec)?;
-    let schema: OpenAPI = serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
+    let openapi_schema: OpenAPI =
+        serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
+    let openapi_schema = openapi_schema.deref_all();
 
-    for (path, ref_or_item) in schema.deref_all().paths.iter() {
-        fuzz_path(&args.url, path, ref_or_item.to_item_ref())?
+    loop {
+        for (path, ref_or_item) in openapi_schema.paths.iter() {
+            let item = ref_or_item.to_item_ref();
+            for payload in create_fuzz_payload(path, item)? {
+                send_request(&args.url, &payload)
+                    .and_then(|resp| check_response(&resp, &payload))?;
+            }
+        }
     }
-    Ok(())
 }
