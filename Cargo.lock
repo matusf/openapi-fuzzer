@@ -493,8 +493,7 @@ checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 [[package]]
 name = "ureq"
 version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6585dcbf3483242f77b502864478ede62431baf3442b99367d3456ec20c1707b"
+source = "git+https://github.com/algesten/ureq?branch=main#a66abdd285ba90866fedb85334d53b4432652155"
 dependencies = [
  "base64",
  "chunked_transfer",

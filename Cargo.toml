@@ -13,7 +13,7 @@ anyhow = "1.0.37"
 openapiv3 = "0.3.2"
 serde = "1.0"
 serde_yaml = "0.8"
-ureq = {version = "2.0.2", features = ["json"] }
+ureq = {git = "https://github.com/algesten/ureq", features = ["json"], branch = "main" }
 openapi_utils = "0.2.0"
 arbitrary = "1"
 rand = "0.8.0"
