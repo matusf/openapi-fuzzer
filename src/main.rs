@@ -6,6 +6,7 @@ use openapiv3::*;
 use rand::{distributions::Alphanumeric, Rng};
 use serde_json;
 use std::path::PathBuf;
+use ureq::OrAnyStatus;
 use url::Url;
 
 #[derive(FromArgs, Debug)]
@@ -49,10 +50,9 @@ fn send_request(url: &Url, payload: &Payload) -> Result<ureq::Response> {
     }
 
     if payload.body.len() > 0 {
-        // Ok(request.send_json(payload.body[0])?)
-        Ok(request.call()?)
+        Ok(request.send_json(payload.body[0].clone()).or_any_status()?)
     } else {
-        Ok(request.call()?)
+        Ok(request.call().or_any_status()?)
     }
 }
 
@@ -158,32 +158,32 @@ fn prepare_request<'a>(
     })
 }
 
-fn check_response(resp: &ureq::Response, payload: &Payload) -> Result<()> {
+fn check_response(resp: &ureq::Response, payload: &Payload) {
+    print!(".");
     if !payload
         .responses
         .responses
         .contains_key(&StatusCode::Code(resp.status()))
     {
-        eprintln!(
+        println!(
             "Unexpected status code: {}\nResponse {:?}",
             resp.status(),
             resp
         );
     }
-    Ok(())
 }
 
 fn create_fuzz_payload<'a>(path: &'a str, item: &'a PathItem) -> Result<Vec<Payload<'a>>> {
     // TODO: Pass parameters to fuzz operation
     let operations = vec![
-        ("get", &item.get),
-        ("put", &item.put),
-        ("post", &item.post),
-        ("delete", &item.delete),
-        ("options", &item.options),
-        ("head", &item.head),
-        ("patch", &item.patch),
-        ("trace", &item.trace),
+        ("GET", &item.get),
+        ("PUT", &item.put),
+        ("POST", &item.post),
+        ("DELETE", &item.delete),
+        ("OPTIONS", &item.options),
+        ("HEAD", &item.head),
+        ("PATCH", &item.patch),
+        ("TRACE", &item.trace),
     ];
 
     let mut payloads = Vec::new();
@@ -207,8 +207,10 @@ fn main() -> Result<()> {
         for (path, ref_or_item) in openapi_schema.paths.iter() {
             let item = ref_or_item.to_item_ref();
             for payload in create_fuzz_payload(path, item)? {
-                send_request(&args.url, &payload)
-                    .and_then(|resp| check_response(&resp, &payload))?;
+                match send_request(&args.url, &payload) {
+                    Ok(resp) => check_response(&resp, &payload),
+                    Err(e) => eprintln!("Err sending req: {}", e),
+                };
             }
         }
     }
