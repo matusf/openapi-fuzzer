@@ -19,6 +19,10 @@ struct Args {
     /// url of api to fuzz
     #[argh(option, short = 'u')]
     url: Url,
+
+    /// status codes that will not be considered as finding
+    #[argh(option)]
+    ignored_status_codes: Vec<u16>,
 }
 
 #[derive(Debug)]
@@ -52,7 +56,7 @@ fn send_request(url: &Url, payload: &Payload) -> Result<ureq::Response> {
     if payload.body.len() > 0 {
         Ok(request.send_json(payload.body[0].clone()).or_any_status()?)
     } else {
-        Ok(request.call().or_any_status()?)
+        request.call().or_any_status().map_err(|e| e.into())
     }
 }
 
@@ -158,12 +162,13 @@ fn prepare_request<'a>(
     })
 }
 
-fn check_response(resp: &ureq::Response, payload: &Payload) {
+fn check_response(resp: &ureq::Response, payload: &Payload, ignored_status_codes: &Vec<u16>) {
     print!(".");
-    if !payload
-        .responses
-        .responses
-        .contains_key(&StatusCode::Code(resp.status()))
+    if !ignored_status_codes.contains(&resp.status())
+        && !payload
+            .responses
+            .responses
+            .contains_key(&StatusCode::Code(resp.status()))
     {
         println!(
             "Unexpected status code: {}\nResponse {:?}",
@@ -208,7 +213,7 @@ fn main() -> Result<()> {
             let item = ref_or_item.to_item_ref();
             for payload in create_fuzz_payload(path, item)? {
                 match send_request(&args.url, &payload) {
-                    Ok(resp) => check_response(&resp, &payload),
+                    Ok(resp) => check_response(&resp, &payload, &args.ignored_status_codes),
                     Err(e) => eprintln!("Err sending req: {}", e),
                 };
             }
