@@ -4,8 +4,9 @@ use argh::FromArgs;
 use openapi_utils::{ReferenceOrExt, SpecExt};
 use openapiv3::*;
 use rand::{distributions::Alphanumeric, Rng};
-use serde_json;
-use std::path::PathBuf;
+use serde::Serialize;
+use serde_json::json;
+use std::{fs, fs::File, path::PathBuf};
 use ureq::OrAnyStatus;
 use url::Url;
 
@@ -25,8 +26,10 @@ struct Args {
     ignored_status_codes: Vec<u16>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 struct Payload<'a> {
+    #[serde(skip)]
+    url: &'a Url,
     method: &'a str,
     path: &'a str,
     query_params: Vec<(&'a str, String)>,
@@ -34,16 +37,17 @@ struct Payload<'a> {
     headers: Vec<(&'a str, String)>,
     cookies: Vec<(&'a str, String)>,
     body: Vec<serde_json::Value>,
+    #[serde(skip)]
     responses: &'a Responses,
 }
 
-fn send_request(url: &Url, payload: &Payload) -> Result<ureq::Response> {
+fn send_request(payload: &Payload) -> Result<ureq::Response> {
     let mut path_with_params = payload.path.to_owned();
     for (name, value) in payload.path_params.iter() {
         path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
     }
 
-    let mut request = ureq::request_url(payload.method, &url.join(&path_with_params)?);
+    let mut request = ureq::request_url(payload.method, &payload.url.join(&path_with_params)?);
 
     for (param, value) in payload.query_params.iter() {
         request = request.query(param, &value)
@@ -103,6 +107,7 @@ fn schema_kind_to_json(
 }
 
 fn prepare_request<'a>(
+    url: &'a Url,
     method: &'a str,
     path: &'a str,
     operation: &'a Operation,
@@ -151,6 +156,7 @@ fn prepare_request<'a>(
     });
 
     Ok(Payload {
+        url,
         method,
         path,
         query_params,
@@ -162,23 +168,62 @@ fn prepare_request<'a>(
     })
 }
 
-fn check_response(resp: &ureq::Response, payload: &Payload, ignored_status_codes: &Vec<u16>) {
+fn construct_curl_request(payload: &Payload) -> Result<String> {
+    let mut curl_command = format!("curl -X {} ", payload.method);
+    if payload.body.len() > 0 {
+        curl_command += &format!(
+            "-d '{}' ",
+            serde_json::to_string(&payload.body[0]).expect("unable to serialize json")
+        );
+    }
+    for (name, value) in &payload.headers {
+        curl_command += &format!("-H {}:{} ", name, value);
+    }
+
+    let mut path_with_params = payload.path.to_owned();
+    for (name, value) in payload.path_params.iter() {
+        path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
+    }
+
+    Ok(curl_command + payload.url.join(&path_with_params)?.as_str())
+}
+
+fn check_response(
+    resp: &ureq::Response,
+    payload: &Payload,
+    ignored_status_codes: &Vec<u16>,
+) -> Result<()> {
     print!(".");
-    if !ignored_status_codes.contains(&resp.status())
-        && !payload
+    if ignored_status_codes.contains(&resp.status())
+        || payload
             .responses
             .responses
             .contains_key(&StatusCode::Code(resp.status()))
     {
-        println!(
-            "Unexpected status code: {}\nResponse {:?}",
-            resp.status(),
-            resp
-        );
+        return Ok(());
     }
+
+    let results_dir = format!(
+        "results/{}/{}/{}",
+        payload.path.trim_matches('/').replace("/", "-"),
+        payload.method,
+        resp.status()
+    );
+    let results_file = format!("{}/{}", results_dir, format!("{:x}", rand::random::<u32>()));
+    fs::create_dir_all(&results_dir)?;
+
+    serde_json::to_writer_pretty(
+        &File::create(&results_file).context(format!("unable to create {}", &results_file))?,
+        &json!({ "url": &payload.url.as_str() ,"payload": payload, "curl": construct_curl_request(&payload)?}),
+    )
+    .map_err(|e| e.into())
 }
 
-fn create_fuzz_payload<'a>(path: &'a str, item: &'a PathItem) -> Result<Vec<Payload<'a>>> {
+fn create_fuzz_payload<'a>(
+    url: &'a Url,
+    path: &'a str,
+    item: &'a PathItem,
+) -> Result<Vec<Payload<'a>>> {
     // TODO: Pass parameters to fuzz operation
     let operations = vec![
         ("GET", &item.get),
@@ -194,7 +239,7 @@ fn create_fuzz_payload<'a>(path: &'a str, item: &'a PathItem) -> Result<Vec<Payl
     let mut payloads = Vec::new();
     for (method, op) in operations {
         if let Some(operation) = op {
-            payloads.push(prepare_request(method, path, operation)?)
+            payloads.push(prepare_request(url, method, path, operation)?)
         }
     }
 
@@ -211,9 +256,9 @@ fn main() -> Result<()> {
     loop {
         for (path, ref_or_item) in openapi_schema.paths.iter() {
             let item = ref_or_item.to_item_ref();
-            for payload in create_fuzz_payload(path, item)? {
-                match send_request(&args.url, &payload) {
-                    Ok(resp) => check_response(&resp, &payload, &args.ignored_status_codes),
+            for payload in create_fuzz_payload(&args.url, path, item)? {
+                match send_request(&payload) {
+                    Ok(resp) => check_response(&resp, &payload, &args.ignored_status_codes)?,
                     Err(e) => eprintln!("Err sending req: {}", e),
                 };
             }
