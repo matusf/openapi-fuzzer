@@ -3,9 +3,10 @@ use arbitrary::{Arbitrary, Unstructured};
 use argh::FromArgs;
 use openapi_utils::{ReferenceOrExt, SpecExt};
 use openapiv3::*;
-use rand::{distributions::Alphanumeric, Rng};
+use rand::Rng;
 use serde::Serialize;
 use serde_json::json;
+use std::convert::TryFrom;
 use std::{fs, fs::File, path::PathBuf};
 use ureq::OrAnyStatus;
 use url::Url;
@@ -118,11 +119,15 @@ fn prepare_request<'a>(
     let mut cookies: Vec<(&str, String)> = Vec::new();
 
     // Set-up random data generator
-    let fuzzer_input: Vec<u8> = rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(1024)
-        .collect();
-    let mut generator = Unstructured::new(&fuzzer_input);
+    let mut arr = [0u32; 1024];
+    rand::thread_rng().try_fill(&mut arr[..])?;
+    let fuzzer_input = arr
+        .iter()
+        .map(|u| char::try_from(*u))
+        .flatten()
+        .collect::<String>();
+
+    let mut generator = Unstructured::new(&fuzzer_input.as_bytes());
 
     for ref_or_param in operation.parameters.iter() {
         match ref_or_param.to_item_ref() {
