@@ -194,11 +194,11 @@ fn check_response(
     ignored_status_codes: &Vec<u16>,
 ) -> Result<()> {
     print!(".");
+    let responses = &payload.responses.responses;
+
+    // known non 500 and ingored status codes are OK
     if ignored_status_codes.contains(&resp.status())
-        || payload
-            .responses
-            .responses
-            .contains_key(&StatusCode::Code(resp.status()))
+        || (responses.contains_key(&StatusCode::Code(resp.status())) && resp.status() / 100 != 5)
     {
         return Ok(());
     }
