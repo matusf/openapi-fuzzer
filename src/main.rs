@@ -199,7 +199,6 @@ fn check_response(
     payload: &Payload,
     ignored_status_codes: &Vec<u16>,
 ) -> Result<()> {
-    print!(".");
     let responses = &payload.responses.responses;
 
     // known non 500 and ingored status codes are OK
@@ -260,6 +259,7 @@ fn main() -> Result<()> {
     let openapi_schema = openapi_schema.deref_all();
 
     loop {
+        eprint!(".");
         for (path, ref_or_item) in openapi_schema.paths.iter() {
             let item = ref_or_item.to_item_ref();
             for payload in create_fuzz_payload(&args.url, path, item)? {
