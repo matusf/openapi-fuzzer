@@ -151,6 +151,7 @@ fn prepare_request<'a>(
         request_body
             .content
             .iter()
+            .filter(|(content, _)| content.contains("json"))
             .map(|(_, media)| {
                 media.schema.as_ref().map(|schema| {
                     schema_kind_to_json(&schema.to_item_ref().schema_kind, &mut generator)
