@@ -23,7 +23,7 @@ struct Args {
     url: Url,
 
     /// status codes that will not be considered as finding
-    #[argh(option)]
+    #[argh(option, short = 'i')]
     ignored_status_codes: Vec<u16>,
 }
 
