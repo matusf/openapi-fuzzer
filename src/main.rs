@@ -3,7 +3,7 @@ use arbitrary::{Arbitrary, Unstructured};
 use argh::FromArgs;
 use openapi_utils::{ReferenceOrExt, SpecExt};
 use openapiv3::*;
-use rand::Rng;
+use rand::{thread_rng, Rng};
 use serde::Serialize;
 use serde_json::json;
 use std::{convert::TryFrom, str::FromStr};
@@ -145,8 +145,9 @@ fn prepare_request<'a>(
     let mut cookies: Vec<(&str, String)> = Vec::new();
 
     // Set-up random data generator
-    let mut arr = [0u32; 1024];
-    rand::thread_rng().try_fill(&mut arr[..])?;
+    let mut rng = thread_rng();
+    let mut arr: Vec<u32> = Vec::with_capacity(rng.gen_range(0..=1024));
+    rng.try_fill(&mut arr[..])?;
     let fuzzer_input = arr
         .iter()
         .map(|u| char::try_from(*u))
