@@ -6,7 +6,7 @@ use openapiv3::*;
 use rand::Rng;
 use serde::Serialize;
 use serde_json::json;
-use std::convert::TryFrom;
+use std::{convert::TryFrom, str::FromStr};
 use std::{fs, fs::File, path::PathBuf};
 use ureq::OrAnyStatus;
 use url::Url;
@@ -25,6 +25,10 @@ struct Args {
     /// status codes that will not be considered as finding
     #[argh(option, short = 'i')]
     ignored_status_codes: Vec<u16>,
+
+    /// additional header to send
+    #[argh(option, short = 'H')]
+    headers: Vec<CLIHeader>,
 }
 
 #[derive(Debug, Serialize)]
@@ -40,6 +44,27 @@ struct Payload<'a> {
     body: Vec<serde_json::Value>,
     #[serde(skip)]
     responses: &'a Responses,
+}
+
+#[derive(Debug)]
+struct CLIHeader {
+    name: String,
+    value: String,
+}
+
+impl FromStr for CLIHeader {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts = s.splitn(2, ':').collect::<Vec<_>>();
+        if parts.len() != 2 {
+            return Err("invalid header format".to_string());
+        }
+        Ok(CLIHeader {
+            name: parts[0].to_string(),
+            value: parts[1].to_string(),
+        })
+    }
 }
 
 fn send_request(payload: &Payload) -> Result<ureq::Response> {
@@ -112,6 +137,7 @@ fn prepare_request<'a>(
     method: &'a str,
     path: &'a str,
     operation: &'a Operation,
+    additional_headers: &'a Vec<CLIHeader>,
 ) -> Result<Payload<'a>> {
     let mut query_params: Vec<(&str, String)> = Vec::new();
     let mut path_params: Vec<(&str, String)> = Vec::new();
@@ -160,6 +186,14 @@ fn prepare_request<'a>(
             .flatten()
             .collect::<Result<Vec<_>>>()
     });
+
+    for header in additional_headers {
+        let index = headers.iter().position(|(name, _)| name == &header.name);
+        match index {
+            Some(i) => headers[i] = (&header.name, header.value.clone()),
+            None => headers.push((&header.name, header.value.clone())),
+        }
+    }
 
     Ok(Payload {
         url,
@@ -228,6 +262,7 @@ fn create_fuzz_payload<'a>(
     url: &'a Url,
     path: &'a str,
     item: &'a PathItem,
+    additional_headers: &'a Vec<CLIHeader>,
 ) -> Result<Vec<Payload<'a>>> {
     // TODO: Pass parameters to fuzz operation
     let operations = vec![
@@ -244,7 +279,13 @@ fn create_fuzz_payload<'a>(
     let mut payloads = Vec::new();
     for (method, op) in operations {
         if let Some(operation) = op {
-            payloads.push(prepare_request(url, method, path, operation)?)
+            payloads.push(prepare_request(
+                url,
+                method,
+                path,
+                operation,
+                additional_headers,
+            )?)
         }
     }
 
@@ -262,7 +303,7 @@ fn main() -> Result<()> {
         eprint!(".");
         for (path, ref_or_item) in openapi_schema.paths.iter() {
             let item = ref_or_item.to_item_ref();
-            for payload in create_fuzz_payload(&args.url, path, item)? {
+            for payload in create_fuzz_payload(&args.url, path, item, &args.headers)? {
                 match send_request(&payload) {
                     Ok(resp) => check_response(&resp, &payload, &args.ignored_status_codes)?,
                     Err(e) => eprintln!("Err sending req: {}", e),
