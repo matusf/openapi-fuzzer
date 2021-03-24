@@ -72,8 +72,12 @@ fn send_request(payload: &Payload) -> Result<ureq::Response> {
     for (name, value) in payload.path_params.iter() {
         path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
     }
-
-    let mut request = ureq::request_url(payload.method, &payload.url.join(&path_with_params)?);
+    let mut request = ureq::request_url(
+        payload.method,
+        &payload
+            .url
+            .join(&path_with_params.trim_start_matches('/'))?,
+    );
 
     for (param, value) in payload.query_params.iter() {
         request = request.query(param, &value)
@@ -226,7 +230,11 @@ fn construct_curl_request(payload: &Payload) -> Result<String> {
         path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
     }
 
-    Ok(curl_command + payload.url.join(&path_with_params)?.as_str())
+    Ok(curl_command
+        + payload
+            .url
+            .join(&path_with_params.trim_start_matches('/'))?
+            .as_str())
 }
 
 fn check_response(
