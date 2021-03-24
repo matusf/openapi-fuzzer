@@ -1,10 +1,11 @@
 mod fuzzer;
+mod payload;
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
 use fuzzer::Fuzzer;
 use openapi_utils::SpecExt;
-use openapiv3::*;
+use openapiv3::OpenAPI;
 use std::path::PathBuf;
 use std::str::FromStr;
 use url::Url;
