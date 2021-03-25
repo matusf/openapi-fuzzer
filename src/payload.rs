@@ -191,7 +191,7 @@ impl<'a> Payload<'a> {
             );
         }
         for (name, value) in &self.headers {
-            curl_command += &format!("-H {}:{} ", name, value);
+            curl_command += &format!("-H '{}:{}' ", name, value);
         }
 
         let mut path_with_params = self.path.to_owned();
