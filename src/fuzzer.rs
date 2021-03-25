@@ -1,4 +1,8 @@
-use std::fs::{self, File};
+use std::{
+    collections::HashMap,
+    fs::{self, File},
+    u32,
+};
 
 use anyhow::{Context, Result};
 use openapi_utils::ReferenceOrExt;
@@ -9,12 +13,61 @@ use url::Url;
 
 use crate::payload::Payload;
 
+#[derive(Debug, Default)]
+struct Tries {
+    total: u32,
+    successful: u32,
+}
+
+impl Tries {
+    fn update(&mut self, success: bool) {
+        self.total += 1;
+        if success {
+            self.successful += 1;
+        }
+    }
+}
+#[derive(Debug, Default)]
+struct Stats {
+    ignored_status_codes: Vec<u16>,
+    stats: HashMap<String, HashMap<String, Tries>>,
+    total: u32,
+}
+
+impl Stats {
+    fn new(ignored_status_codes: Vec<u16>) -> Stats {
+        Stats {
+            ignored_status_codes,
+            total: 0,
+            ..Default::default()
+        }
+    }
+
+    fn update(&mut self, resp: &ureq::Response, payload: &Payload) {
+        self.total += 1;
+        let success = self.ignored_status_codes.contains(&resp.status())
+            || (payload
+                .responses
+                .responses
+                .contains_key(&StatusCode::Code(resp.status()))
+                && resp.status() / 100 != 5);
+
+        self.stats
+            .entry(payload.path.to_string())
+            .or_insert(HashMap::new())
+            .entry(payload.method.to_string())
+            .or_insert(Tries::default())
+            .update(success);
+    }
+}
+
 #[derive(Debug)]
 pub struct Fuzzer {
     schema: OpenAPI,
     url: Url,
     ignored_status_codes: Vec<u16>,
     extra_headers: Vec<(String, String)>,
+    stats: Stats,
 }
 
 impl Fuzzer {
@@ -27,19 +80,24 @@ impl Fuzzer {
         Fuzzer {
             schema,
             url,
-            ignored_status_codes,
             extra_headers,
+            ignored_status_codes: ignored_status_codes.clone(),
+            stats: Stats::new(ignored_status_codes),
         }
     }
 
-    pub fn run(&self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         loop {
             eprint!(".");
             for (path, ref_or_item) in self.schema.paths.iter() {
                 let item = ref_or_item.to_item_ref();
-                for payload in Payload::create(&self.url, path, item, &self.extra_headers)? {
+                for payload in Payload::for_all_methods(&self.url, path, item, &self.extra_headers)?
+                {
                     match self.send_request(&payload) {
-                        Ok(resp) => self.check_response(&resp, &payload)?,
+                        Ok(resp) => {
+                            self.check_response(&resp, &payload)?;
+                            self.stats.update(&resp, &payload)
+                        }
                         Err(e) => eprintln!("Err sending req: {}", e),
                     };
                 }
