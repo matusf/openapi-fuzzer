@@ -38,15 +38,11 @@ fn prepare_request<'a>(
     let mut headers: Vec<(&str, String)> = Vec::new();
     let mut cookies: Vec<(&str, String)> = Vec::new();
 
-    // Set-up random data generator
-    let mut rng = thread_rng();
-    let mut arr: Vec<u32> = Vec::with_capacity(rng.gen_range(0..=1024));
-    rng.try_fill(&mut arr[..])?;
-    let fuzzer_input = arr
-        .iter()
-        .map(|u| char::try_from(*u))
-        .flatten()
-        .collect::<String>();
+        // Set-up random data generator
+        let fuzzer_input: String = rand::thread_rng()
+            .sample_iter::<char, _>(rand::distributions::Standard)
+            .take(1024)
+            .collect();
 
     let mut generator = Unstructured::new(&fuzzer_input.as_bytes());
 
