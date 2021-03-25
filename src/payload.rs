@@ -4,10 +4,8 @@ use openapi_utils::ReferenceOrExt;
 use openapiv3::{
     ArrayType, ObjectType, Operation, Parameter, PathItem, Responses, SchemaKind, Type,
 };
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use serde::Serialize;
-
-use std::convert::TryFrom;
 
 use url::Url;
 
@@ -24,81 +22,6 @@ pub struct Payload<'a> {
     pub body: Vec<serde_json::Value>,
     #[serde(skip)]
     pub responses: &'a Responses,
-}
-
-fn prepare_request<'a>(
-    url: &'a Url,
-    method: &'a str,
-    path: &'a str,
-    operation: &'a Operation,
-    extra_headers: &'a Vec<(String, String)>,
-) -> Result<Payload<'a>> {
-    let mut query_params: Vec<(&str, String)> = Vec::new();
-    let mut path_params: Vec<(&str, String)> = Vec::new();
-    let mut headers: Vec<(&str, String)> = Vec::new();
-    let mut cookies: Vec<(&str, String)> = Vec::new();
-
-        // Set-up random data generator
-        let fuzzer_input: String = rand::thread_rng()
-            .sample_iter::<char, _>(rand::distributions::Standard)
-            .take(1024)
-            .collect();
-
-    let mut generator = Unstructured::new(&fuzzer_input.as_bytes());
-
-    for ref_or_param in operation.parameters.iter() {
-        match ref_or_param.to_item_ref() {
-            Parameter::Query { parameter_data, .. } => {
-                query_params.push((&parameter_data.name, String::arbitrary(&mut generator)?))
-            }
-            Parameter::Path { parameter_data, .. } => {
-                path_params.push((&parameter_data.name, String::arbitrary(&mut generator)?))
-            }
-            Parameter::Header { parameter_data, .. } => {
-                headers.push((&parameter_data.name, String::arbitrary(&mut generator)?))
-            }
-            Parameter::Cookie { parameter_data, .. } => {
-                cookies.push((&parameter_data.name, String::arbitrary(&mut generator)?))
-            }
-        }
-    }
-
-    let body = operation.request_body.as_ref().map(|ref_or_body| {
-        let request_body = ref_or_body.to_item_ref();
-        request_body
-            .content
-            .iter()
-            .filter(|(content, _)| content.contains("json"))
-            .map(|(_, media)| {
-                media.schema.as_ref().map(|schema| {
-                    schema_kind_to_json(&schema.to_item_ref().schema_kind, &mut generator)
-                })
-            })
-            .flatten()
-            .collect::<Result<Vec<_>>>()
-    });
-
-    for (name, value) in extra_headers {
-        let index = headers
-            .iter()
-            .position(|(header_name, _)| header_name == &name);
-        match index {
-            Some(i) => headers[i] = (&name, value.clone()),
-            None => headers.push((&name, value.clone())),
-        }
-    }
-
-    Ok(Payload {
-        url,
-        method,
-        path,
-        query_params,
-        path_params,
-        headers,
-        cookies,
-        body: body.unwrap_or(Ok(Vec::new()))?,
-        responses: &operation.responses,
-    })
 }
 
 fn generate_json_object(object: &ObjectType, gen: &mut Unstructured) -> Result<serde_json::Value> {
@@ -144,7 +67,81 @@ fn schema_kind_to_json(
 }
 
 impl<'a> Payload<'a> {
-    pub fn create(
+    fn new(
+        url: &'a Url,
+        method: &'a str,
+        path: &'a str,
+        operation: &'a Operation,
+        extra_headers: &'a Vec<(String, String)>,
+    ) -> Result<Payload<'a>> {
+        let mut query_params: Vec<(&str, String)> = Vec::new();
+        let mut path_params: Vec<(&str, String)> = Vec::new();
+        let mut headers: Vec<(&str, String)> = Vec::new();
+        let mut cookies: Vec<(&str, String)> = Vec::new();
+
+        // Set-up random data generator
+        let fuzzer_input: String = rand::thread_rng()
+            .sample_iter::<char, _>(rand::distributions::Standard)
+            .take(1024)
+            .collect();
+
+        let mut generator = Unstructured::new(&fuzzer_input.as_bytes());
+        for ref_or_param in operation.parameters.iter() {
+            match ref_or_param.to_item_ref() {
+                Parameter::Query { parameter_data, .. } => {
+                    query_params.push((&parameter_data.name, String::arbitrary(&mut generator)?))
+                }
+                Parameter::Path { parameter_data, .. } => {
+                    path_params.push((&parameter_data.name, String::arbitrary(&mut generator)?))
+                }
+                Parameter::Header { parameter_data, .. } => {
+                    headers.push((&parameter_data.name, String::arbitrary(&mut generator)?))
+                }
+                Parameter::Cookie { parameter_data, .. } => {
+                    cookies.push((&parameter_data.name, String::arbitrary(&mut generator)?))
+                }
+            }
+        }
+
+        let body = operation.request_body.as_ref().map(|ref_or_body| {
+            let request_body = ref_or_body.to_item_ref();
+            request_body
+                .content
+                .iter()
+                .filter(|(content, _)| content.contains("json"))
+                .map(|(_, media)| {
+                    media.schema.as_ref().map(|schema| {
+                        schema_kind_to_json(&schema.to_item_ref().schema_kind, &mut generator)
+                    })
+                })
+                .flatten()
+                .collect::<Result<Vec<_>>>()
+        });
+
+        for (name, value) in extra_headers {
+            let index = headers
+                .iter()
+                .position(|(header_name, _)| header_name == &name);
+            match index {
+                Some(i) => headers[i] = (&name, value.clone()),
+                None => headers.push((&name, value.clone())),
+            }
+        }
+
+        Ok(Payload {
+            url,
+            method,
+            path,
+            query_params,
+            path_params,
+            headers,
+            cookies,
+            body: body.unwrap_or(Ok(Vec::new()))?,
+            responses: &operation.responses,
+        })
+    }
+
+    pub fn for_all_methods(
         url: &'a Url,
         path: &'a str,
         item: &'a PathItem,
@@ -165,13 +162,7 @@ impl<'a> Payload<'a> {
         let mut payloads = Vec::new();
         for (method, op) in operations {
             if let Some(operation) = op {
-                payloads.push(prepare_request(
-                    url,
-                    method,
-                    path,
-                    operation,
-                    extra_headers,
-                )?)
+                payloads.push(Payload::new(url, method, path, operation, extra_headers)?)
             }
         }
 
