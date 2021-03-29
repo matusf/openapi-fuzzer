@@ -1,5 +1,5 @@
 [package]
-name = "open-api-fuzzer"
+name = "openapi-fuzzer"
 version = "0.1.0"
 authors = ["Matus Ferech <matus.ferech@gmail.com>"]
 edition = "2018"
