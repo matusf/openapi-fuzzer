@@ -6,7 +6,7 @@ use openapiv3::{
 };
 use rand::Rng;
 use serde::Serialize;
-
+use serde_json::json;
 use url::Url;
 
 #[derive(Debug, Serialize)]
@@ -44,12 +44,12 @@ fn generate_json_array(array: &ArrayType, gen: &mut Unstructured) -> Result<serd
 
 fn schema_type_to_json(schema_type: &Type, gen: &mut Unstructured) -> Result<serde_json::Value> {
     match schema_type {
-        Type::String(_string_type) => Ok(ureq::json!(String::arbitrary(gen)?)),
-        Type::Number(_number_type) => Ok(ureq::json!(f64::arbitrary(gen)?)),
-        Type::Integer(_integer_type) => Ok(ureq::json!(i64::arbitrary(gen)?)),
+        Type::String(_string_type) => Ok(json!(String::arbitrary(gen)?)),
+        Type::Number(_number_type) => Ok(json!(f64::arbitrary(gen)?)),
+        Type::Integer(_integer_type) => Ok(json!(i64::arbitrary(gen)?)),
         Type::Object(object_type) => generate_json_object(object_type, gen),
         Type::Array(array_type) => generate_json_array(array_type, gen),
-        Type::Boolean {} => Ok(ureq::json!(bool::arbitrary(gen)?)),
+        Type::Boolean {} => Ok(json!(bool::arbitrary(gen)?)),
     }
 }
 

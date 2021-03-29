@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fs::{self, File},
     u32,
 };
@@ -12,11 +12,12 @@ use ureq::OrAnyStatus;
 use url::Url;
 
 use crate::payload::Payload;
+use crate::tui::Tui;
 
 #[derive(Debug, Default)]
-struct Tries {
-    total: u32,
-    successful: u32,
+pub struct Tries {
+    pub total: u32,
+    pub successful: u32,
 }
 
 impl Tries {
@@ -28,10 +29,10 @@ impl Tries {
     }
 }
 #[derive(Debug, Default)]
-struct Stats {
-    ignored_status_codes: Vec<u16>,
-    stats: HashMap<String, HashMap<String, Tries>>,
-    total: u32,
+pub struct Stats {
+    pub ignored_status_codes: Vec<u16>,
+    pub frequencies: BTreeMap<String, BTreeMap<String, Tries>>,
+    pub total: u32,
 }
 
 impl Stats {
@@ -45,16 +46,16 @@ impl Stats {
 
     fn update(&mut self, resp: &ureq::Response, payload: &Payload) {
         self.total += 1;
-        let success = self.ignored_status_codes.contains(&resp.status())
+        let success = !(self.ignored_status_codes.contains(&resp.status())
             || (payload
                 .responses
                 .responses
                 .contains_key(&StatusCode::Code(resp.status()))
-                && resp.status() / 100 != 5);
+                && resp.status() / 100 != 5));
 
-        self.stats
+        self.frequencies
             .entry(payload.path.to_string())
-            .or_insert(HashMap::new())
+            .or_insert(BTreeMap::new())
             .entry(payload.method.to_string())
             .or_insert(Tries::default())
             .update(success);
@@ -68,6 +69,7 @@ pub struct Fuzzer {
     ignored_status_codes: Vec<u16>,
     extra_headers: Vec<(String, String)>,
     stats: Stats,
+    tui: Tui,
 }
 
 impl Fuzzer {
@@ -83,12 +85,13 @@ impl Fuzzer {
             extra_headers,
             ignored_status_codes: ignored_status_codes.clone(),
             stats: Stats::new(ignored_status_codes),
+            tui: Tui::new().expect("unable to setup tui"),
         }
     }
 
     pub fn run(&mut self) -> Result<()> {
+        let mut message = None;
         loop {
-            eprint!(".");
             for (path, ref_or_item) in self.schema.paths.iter() {
                 let item = ref_or_item.to_item_ref();
                 for payload in Payload::for_all_methods(&self.url, path, item, &self.extra_headers)?
@@ -96,11 +99,19 @@ impl Fuzzer {
                     match self.send_request(&payload) {
                         Ok(resp) => {
                             self.check_response(&resp, &payload)?;
-                            self.stats.update(&resp, &payload)
+                            self.stats.update(&resp, &payload);
+                            message = None;
                         }
-                        Err(e) => eprintln!("Err sending req: {}", e),
+                        Err(e) => message = Some(e.to_string()),
                     };
                 }
+            }
+            if self
+                .tui
+                .display(&self.stats, &message)
+                .context("unable to draw tui")?
+            {
+                return Ok(());
             }
         }
     }

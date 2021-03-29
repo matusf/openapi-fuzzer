@@ -1,5 +1,6 @@
 mod fuzzer;
 mod payload;
+mod tui;
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
