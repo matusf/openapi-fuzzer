@@ -18,7 +18,7 @@ use tui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Span,
-    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table},
+    widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState},
     Frame, Terminal,
 };
 
@@ -30,11 +30,52 @@ enum Event<I> {
 pub struct Tui {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     receiver: Receiver<Event<KeyEvent>>,
+    table: StatefulTable,
 }
 
 impl fmt::Debug for Tui {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "<Tui>")
+    }
+}
+
+#[derive(Debug, Default)]
+struct StatefulTable {
+    state: TableState,
+    row_count: usize,
+}
+
+impl StatefulTable {
+    fn row_count(&mut self, row_count: usize) {
+        self.row_count = row_count;
+    }
+
+    pub fn next(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i >= self.row_count - 1 {
+                    0
+                } else {
+                    i + 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
+    }
+
+    pub fn previous(&mut self) {
+        let i = match self.state.selected() {
+            Some(i) => {
+                if i == 0 {
+                    self.row_count - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => 0,
+        };
+        self.state.select(Some(i));
     }
 }
 
@@ -72,6 +113,7 @@ impl Tui {
         Ok(Tui {
             terminal,
             receiver: rx,
+            table: StatefulTable::default(),
         })
     }
 
@@ -96,36 +138,29 @@ impl Tui {
         Row::new(cells)
     }
 
-    fn render_table(frame: &mut Frame<CrosstermBackend<Stdout>>, rect: Rect, stats: &Stats) {
-        let table = Table::new(
+    fn render_table(
+        frame: &mut Frame<CrosstermBackend<Stdout>>,
+        rect: Rect,
+        stats: &Stats,
+        table: &mut StatefulTable,
+    ) {
+        let table_widget = Table::new(
             stats
                 .frequencies
                 .iter()
                 .map(|(path, method_stats)| Tui::fill_row(path, method_stats))
                 .collect::<Vec<Row>>(),
         )
-        .header(Row::new(vec![
-            Cell::from(Span::styled(
-                "Path",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Cell::from(Span::styled(
-                "GET",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Cell::from(Span::styled(
-                "POST",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Cell::from(Span::styled(
-                "PUT",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-            Cell::from(Span::styled(
-                "PATCH",
-                Style::default().add_modifier(Modifier::BOLD),
-            )),
-        ]))
+        .header(
+            Row::new(vec![
+                Cell::from("Path"),
+                Cell::from("GET"),
+                Cell::from("POST"),
+                Cell::from("PUT"),
+                Cell::from("PATCH"),
+            ])
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+        )
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -133,6 +168,7 @@ impl Tui {
                 .title("OpenAPI Fuzzer")
                 .border_type(BorderType::Plain),
         )
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
         .widths(&[
             Constraint::Percentage(44),
             Constraint::Percentage(14),
@@ -141,7 +177,7 @@ impl Tui {
             Constraint::Percentage(14),
         ]);
 
-        frame.render_widget(table, rect)
+        frame.render_stateful_widget(table_widget, rect, &mut table.state);
     }
 
     fn render_message_box(frame: &mut Frame<CrosstermBackend<Stdout>>, rect: Rect, message: &str) {
@@ -160,6 +196,9 @@ impl Tui {
 
     pub fn display(&mut self, stats: &Stats, message: &Option<String>) -> Result<bool> {
         let default_message = "Press `q` to quit".to_string();
+
+        self.table.row_count(stats.frequencies.len());
+        let table = &mut self.table;
         self.terminal
             .draw(|frame| {
                 let chunks = Layout::default()
@@ -168,7 +207,7 @@ impl Tui {
                     .constraints([Constraint::Min(2), Constraint::Length(3)].as_ref())
                     .split(frame.size());
 
-                Tui::render_table(frame, chunks[0], stats);
+                Tui::render_table(frame, chunks[0], stats, table);
                 Tui::render_message_box(
                     frame,
                     chunks[1],
@@ -185,6 +224,8 @@ impl Tui {
                     self.terminal.show_cursor()?;
                     return Ok(true);
                 }
+                KeyCode::Down => self.table.next(),
+                KeyCode::Up => self.table.previous(),
                 _ => {}
             },
             Event::Tick => {}
