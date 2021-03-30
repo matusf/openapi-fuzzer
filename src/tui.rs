@@ -195,8 +195,24 @@ impl Tui {
     }
 
     pub fn display(&mut self, stats: &Stats, message: &Option<String>) -> Result<bool> {
-        let default_message = "Press `q` to quit".to_string();
+        for e in self.receiver.try_iter() {
+            match e {
+                Event::Input(event) => match event.code {
+                    KeyCode::Char('q') => {
+                        terminal::disable_raw_mode()?;
+                        self.terminal.clear()?;
+                        self.terminal.show_cursor()?;
+                        return Ok(true);
+                    }
+                    KeyCode::Down => self.table.next(),
+                    KeyCode::Up => self.table.previous(),
+                    _ => {}
+                },
+                Event::Tick => {}
+            };
+        }
 
+        let default_message = "Press `q` to quit".to_string();
         self.table.row_count(stats.frequencies.len());
         let table = &mut self.table;
         self.terminal
@@ -216,22 +232,6 @@ impl Tui {
             })
             .context("unable to draw tui")?;
 
-        for e in self.receiver.try_iter() {
-            match e {
-                Event::Input(event) => match event.code {
-                    KeyCode::Char('q') => {
-                        terminal::disable_raw_mode()?;
-                        self.terminal.clear()?;
-                        self.terminal.show_cursor()?;
-                        return Ok(true);
-                    }
-                    KeyCode::Down => self.table.next(),
-                    KeyCode::Up => self.table.previous(),
-                    _ => {}
-                },
-                Event::Tick => {}
-            };
-        }
         Ok(false)
     }
 }
