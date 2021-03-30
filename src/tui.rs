@@ -77,6 +77,14 @@ impl StatefulTable {
         };
         self.state.select(Some(i));
     }
+
+    pub fn first(&mut self) {
+        self.state.select(Some(0))
+    }
+
+    pub fn last(&mut self) {
+        self.state.select(Some(self.row_count - 1))
+    }
 }
 
 impl Tui {
@@ -206,6 +214,8 @@ impl Tui {
                     }
                     KeyCode::Down => self.table.next(),
                     KeyCode::Up => self.table.previous(),
+                    KeyCode::Home => self.table.first(),
+                    KeyCode::End => self.table.last(),
                     _ => {}
                 },
                 Event::Tick => {}
