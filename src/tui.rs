@@ -216,20 +216,22 @@ impl Tui {
             })
             .context("unable to draw tui")?;
 
-        match self.receiver.recv()? {
-            Event::Input(event) => match event.code {
-                KeyCode::Char('q') => {
-                    terminal::disable_raw_mode()?;
-                    self.terminal.clear()?;
-                    self.terminal.show_cursor()?;
-                    return Ok(true);
-                }
-                KeyCode::Down => self.table.next(),
-                KeyCode::Up => self.table.previous(),
-                _ => {}
-            },
-            Event::Tick => {}
-        };
+        for e in self.receiver.try_iter() {
+            match e {
+                Event::Input(event) => match event.code {
+                    KeyCode::Char('q') => {
+                        terminal::disable_raw_mode()?;
+                        self.terminal.clear()?;
+                        self.terminal.show_cursor()?;
+                        return Ok(true);
+                    }
+                    KeyCode::Down => self.table.next(),
+                    KeyCode::Up => self.table.previous(),
+                    _ => {}
+                },
+                Event::Tick => {}
+            };
+        }
         Ok(false)
     }
 }
