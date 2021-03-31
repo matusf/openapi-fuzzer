@@ -17,7 +17,7 @@ use tui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Span, Spans},
     widgets::{Block, BorderType, Borders, Cell, Paragraph, Row, Table, TableState},
     Frame, Terminal,
 };
@@ -136,7 +136,20 @@ impl Tui {
                 } else {
                     match method_stats.get(method) {
                         Some(tries) => {
-                            Cell::from(Span::raw(format!("{}/{}", tries.successful, tries.total)))
+                            if tries.successful > 0 {
+                                Cell::from(Spans::from(vec![
+                                    Span::styled(
+                                        tries.successful.to_string(),
+                                        Style::default().fg(Color::Red),
+                                    ),
+                                    Span::raw(format!("/{}", tries.total)),
+                                ]))
+                            } else {
+                                Cell::from(Span::raw(format!(
+                                    "{}/{}",
+                                    tries.successful, tries.total
+                                )))
+                            }
                         }
                         None => Cell::from(Span::raw("0/0")),
                     }
