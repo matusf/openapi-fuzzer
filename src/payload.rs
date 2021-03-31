@@ -11,7 +11,6 @@ use url::Url;
 
 #[derive(Debug, Serialize)]
 pub struct Payload<'a> {
-    #[serde(skip)]
     pub url: &'a Url,
     pub method: &'a str,
     pub path: &'a str,

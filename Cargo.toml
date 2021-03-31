@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 argh = "0.1.4"
-url = "2.2.0"
+url = {version = "2.2.0", features = ["serde"]}
 anyhow = "1.0.37"
 openapiv3 = "0.3.2"
 serde = "1.0"
@@ -20,3 +20,7 @@ rand = "0.8.0"
 serde_json = "1.0"
 tui = {version = "0.14", default-features = false, features = ["crossterm"]}
 crossterm = "0.19"
+
+[[bin]]
+name = "openapi-fuzzer-resender"
+path = "src/bin/resender.rs"

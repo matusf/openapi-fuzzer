@@ -165,7 +165,7 @@ impl Fuzzer {
 
         serde_json::to_writer_pretty(
             &File::create(&results_file).context(format!("unable to create {}", &results_file))?,
-            &json!({ "url": &payload.url.as_str() ,"payload": payload, "curl": payload.to_curl()?}),
+            &json!({"payload": payload, "curl": payload.to_curl()?}),
         )
         .map_err(|e| e.into())
     }
