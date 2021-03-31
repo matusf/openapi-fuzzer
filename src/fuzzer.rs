@@ -160,7 +160,11 @@ impl Fuzzer {
             payload.method,
             resp.status()
         );
-        let results_file = format!("{}/{}", results_dir, format!("{:x}", rand::random::<u32>()));
+        let results_file = format!(
+            "{}/{}.json",
+            results_dir,
+            format!("{:x}", rand::random::<u32>())
+        );
         fs::create_dir_all(&results_dir)?;
 
         serde_json::to_writer_pretty(
