@@ -9,6 +9,10 @@ Black-box fuzzer that fuzzes APIs based on [OpenAPI specification](https://githu
 To build the fuzzer, you will need to have [rust installed](https://www.rust-lang.org/learn/get-started).
 
 ```sh
+# Install from crates.io
+cargo install openapi-fuzzer
+
+# Or download the repo and build locally
 git clone git@github.com:matusf/openapi-fuzzer.git
 cd openapi-fuzzer
 
