@@ -51,7 +51,6 @@ struct Payload {
     query_params: Vec<(String, String)>,
     path_params: Vec<(String, String)>,
     headers: Vec<(String, String)>,
-    cookies: Vec<(String, String)>,
     body: Vec<serde_json::Value>,
 }
 

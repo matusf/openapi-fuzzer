@@ -17,7 +17,6 @@ pub struct Payload<'a> {
     pub query_params: Vec<(&'a str, String)>,
     pub path_params: Vec<(&'a str, String)>,
     pub headers: Vec<(&'a str, String)>,
-    pub cookies: Vec<(&'a str, String)>,
     pub body: Vec<serde_json::Value>,
     #[serde(skip)]
     pub responses: &'a Responses,
@@ -76,7 +75,6 @@ impl<'a> Payload<'a> {
         let mut query_params: Vec<(&str, String)> = Vec::new();
         let mut path_params: Vec<(&str, String)> = Vec::new();
         let mut headers: Vec<(&str, String)> = Vec::new();
-        let mut cookies: Vec<(&str, String)> = Vec::new();
 
         // Set-up random data generator
         let fuzzer_input: String = rand::thread_rng()
@@ -96,9 +94,14 @@ impl<'a> Payload<'a> {
                 Parameter::Header { parameter_data, .. } => {
                     headers.push((&parameter_data.name, String::arbitrary(&mut generator)?))
                 }
-                Parameter::Cookie { parameter_data, .. } => {
-                    cookies.push((&parameter_data.name, String::arbitrary(&mut generator)?))
-                }
+                Parameter::Cookie { parameter_data, .. } => headers.push((
+                    "Cookie",
+                    format!(
+                        "{}={}",
+                        parameter_data.name,
+                        String::arbitrary(&mut generator)?
+                    ),
+                )),
             }
         }
 
@@ -134,7 +137,6 @@ impl<'a> Payload<'a> {
             query_params,
             path_params,
             headers,
-            cookies,
             body: body.unwrap_or(Ok(Vec::new()))?,
             responses: &operation.responses,
         })
