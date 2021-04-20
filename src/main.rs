@@ -43,7 +43,7 @@ impl FromStr for Header {
             return Err("invalid header format".to_string());
         }
         Ok(Header {
-            0: parts[0].to_string(),
+            0: parts[0].to_string().to_lowercase(),
             1: parts[1].to_string(),
         })
     }

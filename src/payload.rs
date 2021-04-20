@@ -123,7 +123,7 @@ impl<'a> Payload<'a> {
         for (name, value) in extra_headers {
             let index = headers
                 .iter()
-                .position(|(header_name, _)| header_name == &name);
+                .position(|(header_name, _)| &header_name.to_lowercase() == name);
             match index {
                 Some(i) => headers[i] = (&name, value.clone()),
                 None => headers.push((&name, value.clone())),
