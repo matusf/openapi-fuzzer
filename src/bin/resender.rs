@@ -106,6 +106,13 @@ fn main() -> Result<()> {
         .send(args.header.into_iter().map(|h| h.into()).collect())?;
 
     println!("{:?}", &resp);
-    println!("{:?}", &resp.into_string()?);
+    if resp.content_type().to_lowercase().contains("json") {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&resp.into_json::<serde_json::Value>()?)?
+        )
+    } else {
+        println!("{}", &resp.into_string()?);
+    }
     Ok(())
 }
