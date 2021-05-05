@@ -1,10 +1,11 @@
-use anyhow::Result;
+use anyhow::{Error, Result};
 use arbitrary::{Arbitrary, Unstructured};
 use openapi_utils::ReferenceOrExt;
 use openapiv3::{
-    ArrayType, ObjectType, Operation, Parameter, PathItem, Responses, SchemaKind, Type,
+    ArrayType, ObjectType, Operation, Parameter, PathItem, ReferenceOr, Responses, Schema,
+    SchemaKind, Type,
 };
-use rand::Rng;
+use rand::{prelude::IteratorRandom, Rng};
 use serde::Serialize;
 use serde_json::json;
 use url::Url;
@@ -55,12 +56,26 @@ fn schema_kind_to_json(
     schema_kind: &SchemaKind,
     gen: &mut Unstructured,
 ) -> Result<serde_json::Value> {
+    let f = |vec: &Vec<ReferenceOr<Schema>>,
+             gen: &mut Unstructured|
+     -> Result<Vec<serde_json::Value>> {
+        vec.iter()
+            .map(|ref_of_schema| schema_kind_to_json(&ref_of_schema.to_item_ref().schema_kind, gen))
+            .collect()
+    };
+
     match schema_kind {
         SchemaKind::Any(_any) => todo!(),
         SchemaKind::Type(schema_type) => Ok(schema_type_to_json(schema_type, gen)?),
-        SchemaKind::OneOf { .. } => todo!(),
-        SchemaKind::AnyOf { .. } => todo!(),
-        SchemaKind::AllOf { .. } => todo!(),
+        SchemaKind::OneOf { one_of } => f(one_of, gen)?
+            .into_iter()
+            .choose(&mut rand::thread_rng())
+            .ok_or(Error::msg("unable to generate JSON")),
+        SchemaKind::AnyOf { any_of } => Ok(f(any_of, gen)?
+            .into_iter()
+            .choose_multiple(&mut rand::thread_rng(), 5)
+            .into()),
+        SchemaKind::AllOf { all_of } => Ok(f(all_of, gen)?.into()),
     }
 }
 
