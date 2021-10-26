@@ -49,9 +49,9 @@ impl FromStr for Header {
     }
 }
 
-impl Into<(String, String)> for Header {
-    fn into(self) -> (String, String) {
-        (self.0, self.1)
+impl From<Header> for (String, String) {
+    fn from(val: Header) -> Self {
+        (val.0, val.1)
     }
 }
 
@@ -69,9 +69,9 @@ impl FromStr for UrlWithTrailingSlash {
     }
 }
 
-impl Into<Url> for UrlWithTrailingSlash {
-    fn into(self) -> Url {
-        self.0
+impl From<UrlWithTrailingSlash> for Url {
+    fn from(val: UrlWithTrailingSlash) -> Self {
+        val.0
     }
 }
 

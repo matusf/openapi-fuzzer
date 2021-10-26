@@ -70,7 +70,7 @@ fn schema_kind_to_json(
         SchemaKind::OneOf { one_of } => f(one_of, gen)?
             .into_iter()
             .choose(&mut rand::thread_rng())
-            .ok_or(Error::msg("unable to generate JSON")),
+            .ok_or_else(|| Error::msg("unable to generate JSON")),
         SchemaKind::AnyOf { any_of } => Ok(f(any_of, gen)?
             .into_iter()
             .choose_multiple(&mut rand::thread_rng(), 5)
@@ -85,7 +85,7 @@ impl<'a> Payload<'a> {
         method: &'a str,
         path: &'a str,
         operation: &'a Operation,
-        extra_headers: &'a Vec<(String, String)>,
+        extra_headers: &'a [(String, String)],
     ) -> Result<Payload<'a>> {
         let mut query_params: Vec<(&str, String)> = Vec::new();
         let mut path_params: Vec<(&str, String)> = Vec::new();
@@ -97,7 +97,7 @@ impl<'a> Payload<'a> {
             .take(1024)
             .collect();
 
-        let mut generator = Unstructured::new(&fuzzer_input.as_bytes());
+        let mut generator = Unstructured::new(fuzzer_input.as_bytes());
         for ref_or_param in operation.parameters.iter() {
             match ref_or_param.to_item_ref() {
                 Parameter::Query { parameter_data, .. } => {
@@ -140,8 +140,8 @@ impl<'a> Payload<'a> {
                 .iter()
                 .position(|(header_name, _)| &header_name.to_lowercase() == name);
             match index {
-                Some(i) => headers[i] = (&name, value.clone()),
-                None => headers.push((&name, value.clone())),
+                Some(i) => headers[i] = (name, value.clone()),
+                None => headers.push((name, value.clone())),
             }
         }
 
@@ -152,7 +152,7 @@ impl<'a> Payload<'a> {
             query_params,
             path_params,
             headers,
-            body: body.unwrap_or(Ok(Vec::new()))?,
+            body: body.unwrap_or_else(|| Ok(Vec::new()))?,
             responses: &operation.responses,
         })
     }
@@ -161,7 +161,7 @@ impl<'a> Payload<'a> {
         url: &'a Url,
         path: &'a str,
         item: &'a PathItem,
-        extra_headers: &'a Vec<(String, String)>,
+        extra_headers: &'a [(String, String)],
     ) -> Result<Vec<Payload<'a>>> {
         // TODO: Pass parameters to fuzz operation
         let operations = vec![
@@ -187,7 +187,7 @@ impl<'a> Payload<'a> {
 
     pub fn to_curl(&self) -> Result<String> {
         let mut curl_command = format!("curl -X {} ", self.method);
-        if self.body.len() > 0 {
+        if !self.body.is_empty() {
             curl_command += &format!(
                 "-d '{}' ",
                 serde_json::to_string(&self.body[0]).expect("unable to serialize json")
@@ -199,13 +199,13 @@ impl<'a> Payload<'a> {
 
         let mut path_with_params = self.path.to_owned();
         for (name, value) in self.path_params.iter() {
-            path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
+            path_with_params = path_with_params.replace(&format!("{{{}}}", name), value);
         }
 
         Ok(curl_command
             + self
                 .url
-                .join(&path_with_params.trim_start_matches('/'))?
+                .join(path_with_params.trim_start_matches('/'))?
                 .as_str())
     }
 }
