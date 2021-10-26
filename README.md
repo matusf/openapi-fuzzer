@@ -1,8 +1,29 @@
 # OpenAPI fuzzer
 
-Black-box fuzzer that fuzzes APIs based on [OpenAPI specification](https://github.com/OAI/OpenAPI-Specification/). All you need to do is to supply URL of the API and its specification.
+![ci](https://github.com/matusf/openapi-fuzzer/actions/workflows/ci.yml/badge.svg)
+
+Black-box fuzzer that fuzzes APIs based on [OpenAPI specification](https://github.com/OAI/OpenAPI-Specification/). All you need to do is to supply URL of the API and its specification. Find bugs for free!
 
 ![demo](./demo.png)
+
+## Findings
+
+The fuzzer has been used to find bugs in numerous software. Some of the well-known fuzzed software include[^1]:
+
+- Kubernetes
+  - [kubenetes#101350](https://github.com/kubernetes/kubernetes/issues/101350)
+  - [kubenetes#101348](https://github.com/kubernetes/kubernetes/issues/101348)
+  - [kubenetes#101355](https://github.com/kubernetes/kubernetes/issues/101355)
+- Gitea
+  - [gitea#15357](https://github.com/go-gitea/gitea/issues/)
+  - [gitea#15356](https://github.com/go-gitea/gitea/issues/)
+  - [gitea#15346](https://github.com/go-gitea/gitea/issues/)
+- Vault
+  - [vault#11310](https://github.com/hashicorp/vault/issues/11310)
+  - [vault#11311](https://github.com/hashicorp/vault/issues/11311)
+  - [vault#11313](https://github.com/hashicorp/vault/issues/11313)
+
+The category of bugs differ, but some of the common are parsing bugs, invalid format bugs and querying non-existent entities. **If you have found bugs with this fuzzer, please reach out to me. I would love to hear from you.** Feel free to submit a PR and add your finding to the list above.
 
 ## Building & installing
 
@@ -25,12 +46,12 @@ cargo build
 
 ## Usage
 
-After installation you will have two binaries in your `$PATH`. `openapi-fuzzer` will fuzz the API according to the specification and report any findings. All findings will be located in a `results` directory and
+After installation you will have two binaries, `openapi-fuzzer` and `openapi-fuzzer-resender`. The `openapi-fuzzer` will fuzz the API according to the specification and report any findings. All findings will be located in a `results` directory in a JSON format. After you are done with fuzzing, you can use `openapi-fuzzer-resender` to resend payloads that triggered a bugs and examine the cause in depth.
 
 ### Tips
 
-- When the fuzzer receives an unexpected status code, it will report is as a finding. However, many APIs do not specify client error status codes in the specification. To minimize false positive findings ignore status codes that you are not interested in with `-i` flag.
-- Most APIs use some base prefix for endpoints like `/v1` or `/api`. The specification is writen without it. Do not forget to **include the path prefix in the url**
+- When the fuzzer receives an unexpected status code, it will report is as a finding. However, many APIs do not specify client error status codes in the specification. To minimize false positive findings ignore status codes that you are not interested in with `-i` flag. It is adviced to fuzz it two stages. Firstly, run the fuzzer without `-i` flag for a minute. Then check `results` folder for the reported findings. If there are reports from status codes you do not care about, add them via `-i` flag and rerun the fuzzer.
+- Most APIs use some base prefix for endpoints like `/v1` or `/api`, however, the specifications are sometimes writen without it. Do not forget to **include the path prefix in the url**.
 - You may add an extra header with `-H` flag. It may be useful when you would like to increase coverage by providing some sort of authorization.
 
 ```txt
@@ -76,5 +97,11 @@ Options:
 
 $ openapi-fuzzer-resender results/sys-seal/POST/500/1b4e8a77.json
 Response[status: 500, status_text: Internal Server Error, url: http://127.0.0.1:8200/v1/sys/seal]
-"{\"errors\":[\"1 error occurred:\\n\\t* missing client token\\n\\n\"]}\n"
+{"errors":["1 error occurred: * missing client token"]}
 ```
+
+## Future plans
+
+- [ ] Add script for minimization of the findings
+
+[^1]: not all found bugs are linked
