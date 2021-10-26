@@ -37,9 +37,9 @@ impl FromStr for Header {
     }
 }
 
-impl Into<(String, String)> for Header {
-    fn into(self) -> (String, String) {
-        (self.0, self.1)
+impl From<Header> for (String, String) {
+    fn from(val: Header) -> Self {
+        (val.0, val.1)
     }
 }
 
@@ -63,15 +63,15 @@ impl Payload {
     fn send(&mut self, extra_headers: Vec<(String, String)>) -> Result<Response> {
         let mut path_with_params = self.path.to_owned();
         for (name, value) in self.path_params.iter() {
-            path_with_params = path_with_params.replace(&format!("{{{}}}", name), &value);
+            path_with_params = path_with_params.replace(&format!("{{{}}}", name), value);
         }
         let mut request = ureq::request_url(
             &self.method,
-            &self.url.join(&path_with_params.trim_start_matches('/'))?,
+            &self.url.join(path_with_params.trim_start_matches('/'))?,
         );
 
         for (param, value) in self.query_params.iter() {
-            request = request.query(param, &value)
+            request = request.query(param, value)
         }
 
         for (name, value) in extra_headers {
@@ -86,10 +86,10 @@ impl Payload {
         }
 
         for (header, value) in self.headers.iter() {
-            request = request.set(header, &value)
+            request = request.set(header, value)
         }
 
-        if self.body.len() > 0 {
+        if !self.body.is_empty() {
             Ok(request.send_json(self.body[0].clone()).or_any_status()?)
         } else {
             request.call().or_any_status().map_err(|e| e.into())
