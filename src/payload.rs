@@ -65,7 +65,7 @@ fn schema_kind_to_json(
     };
 
     match schema_kind {
-        SchemaKind::Any(_any) => todo!(),
+        SchemaKind::Any(_any) => Ok(json!(String::arbitrary(gen)?)),
         SchemaKind::Type(schema_type) => Ok(schema_type_to_json(schema_type, gen)?),
         SchemaKind::OneOf { one_of } => f(one_of, gen)?
             .into_iter()
