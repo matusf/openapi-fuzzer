@@ -15,9 +15,9 @@ The fuzzer has been used to find bugs in numerous software. Some of the well-kno
   - [kubenetes#101348](https://github.com/kubernetes/kubernetes/issues/101348)
   - [kubenetes#101355](https://github.com/kubernetes/kubernetes/issues/101355)
 - Gitea
-  - [gitea#15357](https://github.com/go-gitea/gitea/issues/)
-  - [gitea#15356](https://github.com/go-gitea/gitea/issues/)
-  - [gitea#15346](https://github.com/go-gitea/gitea/issues/)
+  - [gitea#15357](https://github.com/go-gitea/gitea/issues/15357)
+  - [gitea#15356](https://github.com/go-gitea/gitea/issues/15356)
+  - [gitea#15346](https://github.com/go-gitea/gitea/issues/15346)
 - Vault
   - [vault#11310](https://github.com/hashicorp/vault/issues/11310)
   - [vault#11311](https://github.com/hashicorp/vault/issues/11311)
