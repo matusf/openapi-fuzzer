@@ -1,6 +1,6 @@
 [package]
 name = "openapi-fuzzer"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Matus Ferech <matus.ferech@gmail.com>"]
 description = "Black-box fuzzer that fuzzes APIs based on OpenAPI specification "
 edition = "2018"
