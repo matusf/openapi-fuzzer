@@ -374,9 +374,9 @@ dependencies = [
 
 [[package]]
 name = "openapi_utils"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "110de6c8c343325a51f225a59babe4ab61ed99439261d741541370a530e8922e"
+checksum = "4424cd4810cfd406ae03018e0c3494c74ba8144ffcdad785a9bf9bc2fbb251b2"
 dependencies = [
  "http",
  "indexmap",
@@ -386,9 +386,9 @@ dependencies = [
 
 [[package]]
 name = "openapiv3"
-version = "0.3.2"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ee9a17eebdd923c4cf74145cd31b2b1d3aa019262c9e8669a843b1d629a9a3c"
+checksum = "90228d34f20d9fff3174d19b0d41e67f52711045270b540a2a2c2dc41ccb4085"
 dependencies = [
  "indexmap",
  "serde",

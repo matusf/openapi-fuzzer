@@ -13,11 +13,11 @@ default-run = "openapi-fuzzer"
 argh = "0.1.4"
 url = {version = "2.2.0", features = ["serde"]}
 anyhow = "1.0.37"
-openapiv3 = "0.3.2"
+openapiv3 = "0.5.0"
 serde = "1.0"
 serde_yaml = "0.8"
 ureq = {version = "2.1.0", features = ["json", "native-certs"]}
-openapi_utils = "0.2.1"
+openapi_utils = "0.2.2"
 arbitrary = "1"
 rand = "0.8.0"
 serde_json = "1.0"
