@@ -40,7 +40,7 @@ cd openapi-fuzzer
 # Install to the $PATH
 cargo install --path .
 
-# Or build (add --releade to build optimized binary) inside the repo
+# Or build (add --release to build optimized binary) inside the repo
 cargo build
 ```
 
@@ -61,7 +61,7 @@ Usage: openapi-fuzzer -s <spec> -u <url> [-i <ignore-status-code>] [-H <header>]
 OpenAPI fuzzer
 
 Options:
-  -s, --spec        path to OpenAPI specification
+  -s, --spec        path to OpenAPI specification file
   -u, --url         url of api to fuzz
   -i, --ignore-status-code
                     status codes that will not be considered as finding
@@ -69,7 +69,7 @@ Options:
   --help            display usage information
 
 
-$ openapi-fuzzer -s spec.yaml -u http://127.0.0.1:8200/v1/ -i 404
+$ openapi-fuzzer -s ./spec.yaml -u http://127.0.0.1:8200/v1/ -i 404
 ```
 
 ### Replaying findings

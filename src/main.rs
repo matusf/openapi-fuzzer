@@ -14,7 +14,7 @@ use url::{ParseError, Url};
 #[derive(FromArgs, Debug)]
 /// OpenAPI fuzzer
 struct Args {
-    /// path to OpenAPI specification
+    /// path to OpenAPI specification file
     #[argh(option, short = 's')]
     spec: PathBuf,
 
