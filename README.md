@@ -47,6 +47,7 @@ cargo build
 ## Usage
 
 After installation you will have two binaries, `openapi-fuzzer` and `openapi-fuzzer-resender`. The `openapi-fuzzer` will fuzz the API according to the specification and report any findings. All findings will be located in a `results` directory in a JSON format. After you are done with fuzzing, you can use `openapi-fuzzer-resender` to resend payloads that triggered a bugs and examine the cause in depth.
+>Note: This program only supports OpenAPI v3, both YAML and JSON. OpenAPI v2 is not supported and must be converted to v3 before usage. 
 
 ### Tips
 
