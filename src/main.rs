@@ -1,5 +1,5 @@
 mod fuzzer;
-mod payload;
+mod request;
 mod tui;
 
 use anyhow::{Context, Result};
