@@ -12,7 +12,7 @@ use std::fmt::Write;
 use url::Url;
 
 #[derive(Debug, Serialize)]
-pub struct Payload<'a> {
+pub struct Request<'a> {
     pub url: &'a Url,
     pub method: &'a str,
     pub path: &'a str,
@@ -80,14 +80,14 @@ fn schema_kind_to_json(
     }
 }
 
-impl<'a> Payload<'a> {
+impl<'a> Request<'a> {
     fn new(
         url: &'a Url,
         method: &'a str,
         path: &'a str,
         operation: &'a Operation,
         extra_headers: &'a [(String, String)],
-    ) -> Result<Payload<'a>> {
+    ) -> Result<Request<'a>> {
         let mut query_params: Vec<(&str, String)> = Vec::new();
         let mut path_params: Vec<(&str, String)> = Vec::new();
         let mut headers: Vec<(&str, String)> = Vec::new();
@@ -145,7 +145,7 @@ impl<'a> Payload<'a> {
             }
         }
 
-        Ok(Payload {
+        Ok(Request {
             url,
             method,
             path,
@@ -162,7 +162,7 @@ impl<'a> Payload<'a> {
         path: &'a str,
         item: &'a PathItem,
         extra_headers: &'a [(String, String)],
-    ) -> Result<Vec<Payload<'a>>> {
+    ) -> Result<Vec<Request<'a>>> {
         // TODO: Pass parameters to fuzz operation
         let operations = vec![
             ("GET", &item.get),
@@ -178,7 +178,7 @@ impl<'a> Payload<'a> {
         let mut payloads = Vec::new();
         for (method, op) in operations {
             if let Some(operation) = op {
-                payloads.push(Payload::new(url, method, path, operation, extra_headers)?)
+                payloads.push(Request::new(url, method, path, operation, extra_headers)?)
             }
         }
 
