@@ -1,4 +1,4 @@
-use anyhow::{Error, Result};
+use anyhow::{Context, Error, Result};
 use arbitrary::{Arbitrary, Unstructured};
 use openapi_utils::ReferenceOrExt;
 use openapiv3::{
@@ -8,6 +8,7 @@ use openapiv3::{
 use rand::{prelude::IteratorRandom, Rng};
 use serde::Serialize;
 use serde_json::json;
+use std::fmt::Write;
 use url::Url;
 
 #[derive(Debug, Serialize)]
@@ -126,12 +127,11 @@ impl<'a> Payload<'a> {
                 .content
                 .iter()
                 .filter(|(content, _)| content.contains("json"))
-                .map(|(_, media)| {
+                .filter_map(|(_, media)| {
                     media.schema.as_ref().map(|schema| {
                         schema_kind_to_json(&schema.to_item_ref().schema_kind, &mut generator)
                     })
                 })
-                .flatten()
                 .collect::<Result<Vec<_>>>()
         });
 
@@ -188,13 +188,14 @@ impl<'a> Payload<'a> {
     pub fn to_curl(&self) -> Result<String> {
         let mut curl_command = format!("curl -X {} ", self.method);
         if !self.body.is_empty() {
-            curl_command += &format!(
+            write!(
+                &mut curl_command,
                 "-d '{}' ",
-                serde_json::to_string(&self.body[0]).expect("unable to serialize json")
-            );
+                serde_json::to_string(&self.body[0]).context("unable to serialize json")?
+            )?;
         }
         for (name, value) in &self.headers {
-            curl_command += &format!("-H '{}:{}' ", name, value);
+            write!(&mut curl_command, "-H '{}:{}' ", name, value)?;
         }
 
         let mut path_with_params = self.path.to_owned();

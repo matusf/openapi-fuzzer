@@ -154,15 +154,11 @@ impl Fuzzer {
 
         let results_dir = format!(
             "results/{}/{}/{}",
-            payload.path.trim_matches('/').replace("/", "-"),
+            payload.path.trim_matches('/').replace('/', "-"),
             payload.method,
             resp.status()
         );
-        let results_file = format!(
-            "{}/{}.json",
-            results_dir,
-            format!("{:x}", rand::random::<u32>())
-        );
+        let results_file = format!("{}/{:x}.json", results_dir, rand::random::<u32>());
         fs::create_dir_all(&results_dir)?;
 
         serde_json::to_writer_pretty(
