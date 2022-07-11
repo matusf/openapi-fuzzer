@@ -11,7 +11,7 @@ use serde_json::json;
 use ureq::OrAnyStatus;
 use url::Url;
 
-use crate::payload::Payload;
+use crate::request::Request;
 use crate::tui::Tui;
 
 #[derive(Debug, Default)]
@@ -44,7 +44,7 @@ impl Stats {
         }
     }
 
-    fn update(&mut self, resp: &ureq::Response, payload: &Payload) {
+    fn update(&mut self, resp: &ureq::Response, payload: &Request) {
         self.total += 1;
         let success = !(self.ignored_status_codes.contains(&resp.status())
             || (payload
@@ -94,7 +94,7 @@ impl Fuzzer {
         loop {
             for (path, ref_or_item) in self.schema.paths.iter() {
                 let item = ref_or_item.to_item_ref();
-                for payload in Payload::for_all_methods(&self.url, path, item, &self.extra_headers)?
+                for payload in Request::for_all_methods(&self.url, path, item, &self.extra_headers)?
                 {
                     match self.send_request(&payload) {
                         Ok(resp) => {
@@ -116,7 +116,7 @@ impl Fuzzer {
         }
     }
 
-    fn send_request(&self, payload: &Payload) -> Result<ureq::Response> {
+    fn send_request(&self, payload: &Request) -> Result<ureq::Response> {
         let mut path_with_params = payload.path.to_owned();
         for (name, value) in payload.path_params.iter() {
             path_with_params = path_with_params.replace(&format!("{{{}}}", name), value);
@@ -141,7 +141,7 @@ impl Fuzzer {
         }
     }
 
-    fn check_response(&self, resp: &ureq::Response, payload: &Payload) -> Result<()> {
+    fn check_response(&self, resp: &ureq::Response, payload: &Request) -> Result<()> {
         let responses = &payload.responses.responses;
 
         // known non 500 and ingored status codes are OK
