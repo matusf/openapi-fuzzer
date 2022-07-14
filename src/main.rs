@@ -1,3 +1,4 @@
+mod arbitrary;
 mod fuzzer;
 mod request;
 mod tui;
