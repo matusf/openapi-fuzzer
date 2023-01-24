@@ -196,15 +196,15 @@ impl Arbitrary for Payload {
 }
 
 impl Payload {
-    pub fn query_params(&self) -> &Vec<(String, String)> {
+    pub fn query_params(&self) -> &[(String, String)] {
         &self.query_params.0
     }
 
-    pub fn path_params(&self) -> &Vec<(String, String)> {
+    pub fn path_params(&self) -> &[(String, String)] {
         &self.path_params.0
     }
 
-    pub fn headers(&self) -> &Vec<(String, String)> {
+    pub fn headers(&self) -> &[(String, String)] {
         &self.headers.0
     }
 
