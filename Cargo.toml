@@ -24,9 +24,9 @@ serde_json = "1.0"
 tui = {version = "0.14", default-features = false, features = ["crossterm"]}
 crossterm = "0.19"
 proptest = "1.0.0"
+indexmap = "1.9.1"
 
 [dev-dependencies]
-indexmap = "1.9.1"
 
 [[bin]]
 name = "openapi-fuzzer-resender"

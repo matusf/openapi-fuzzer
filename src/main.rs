@@ -1,7 +1,5 @@
 mod arbitrary;
 mod fuzzer;
-mod request;
-mod tui;
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
@@ -87,7 +85,9 @@ fn main() -> Result<()> {
         openapi_schema,
         args.url.into(),
         args.ignore_status_code,
-        args.header.into_iter().map(|h| h.into()).collect(),
+        args.header.into_iter().map(Into::into).collect(),
     )
-    .run()
+    .run();
+
+    Ok(())
 }
