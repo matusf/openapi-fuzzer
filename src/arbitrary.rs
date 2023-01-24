@@ -1,15 +1,31 @@
-#![allow(dead_code)]
-
-use std::iter::FromIterator;
+use std::{iter::FromIterator, rc::Rc};
 
 use openapi_utils::ReferenceOrExt;
-use openapiv3::{ArrayType, ObjectType, SchemaKind, Type};
+use openapiv3::{ArrayType, ObjectType, Operation, Parameter, SchemaKind, Type};
 
 use proptest::{
     arbitrary::any,
     collection::vec,
+    prelude::{any_with, Arbitrary},
     strategy::{BoxedStrategy, Just, Strategy},
 };
+use serde::Serialize;
+
+pub struct ArbitraryParameters {
+    operation: Box<Operation>,
+}
+
+impl ArbitraryParameters {
+    pub fn new(operation: Box<Operation>) -> Self {
+        ArbitraryParameters { operation }
+    }
+}
+
+impl Default for ArbitraryParameters {
+    fn default() -> Self {
+        panic!("no default value for `ArbitraryParameters`")
+    }
+}
 
 fn generate_json_object(object: &ObjectType) -> BoxedStrategy<serde_json::Value> {
     let mut vec = Vec::with_capacity(object.properties.len());
@@ -50,6 +66,154 @@ fn schema_kind_to_json(schema_kind: &SchemaKind) -> BoxedStrategy<serde_json::Va
 
 fn any_json(schema_kind: &SchemaKind) -> impl Strategy<Value = serde_json::Value> {
     schema_kind_to_json(schema_kind)
+}
+
+#[derive(Debug, Default, Clone, Serialize)]
+struct OptionalJSON(Option<serde_json::Value>);
+
+impl Arbitrary for OptionalJSON {
+    type Parameters = Rc<ArbitraryParameters>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        if let Some(ref_or_body) = args.operation.request_body.as_ref() {
+            let request_body = ref_or_body.to_item_ref();
+            for (media_type_name, media_type) in &request_body.content {
+                if media_type_name.contains("json") {
+                    match media_type
+                        .schema
+                        .as_ref()
+                        .map(|schema| any_json(&schema.to_item_ref().schema_kind))
+                    {
+                        Some(strategy) => {
+                            return strategy.prop_map(|json| OptionalJSON(Some(json))).boxed();
+                        }
+                        None => continue,
+                    };
+                };
+            }
+        };
+
+        Just(OptionalJSON(None)).boxed()
+    }
+
+    type Strategy = BoxedStrategy<OptionalJSON>;
+}
+
+#[derive(Debug, Serialize)]
+struct Headers(Vec<(String, String)>);
+
+impl Arbitrary for Headers {
+    type Parameters = Rc<ArbitraryParameters>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        args.operation
+            .parameters
+            .iter()
+            .flat_map(|ref_or_param| match ref_or_param.to_item_ref() {
+                Parameter::Header { parameter_data, .. } => {
+                    Some((Just(parameter_data.name.clone()), any::<String>()))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .prop_map(Headers)
+            .boxed()
+    }
+    type Strategy = BoxedStrategy<Headers>;
+}
+
+#[derive(Debug, Serialize)]
+struct PathParams(Vec<(String, String)>);
+
+impl Arbitrary for PathParams {
+    type Parameters = Rc<ArbitraryParameters>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        let mut path_params = vec![];
+        for ref_or_param in args.operation.parameters.iter() {
+            match ref_or_param.to_item_ref() {
+                Parameter::Path { parameter_data, .. } => {
+                    path_params.push((Just(parameter_data.name.clone()), any::<String>()))
+                }
+                _ => continue,
+            }
+        }
+        path_params.prop_map(PathParams).boxed()
+    }
+    type Strategy = BoxedStrategy<PathParams>;
+}
+
+#[derive(Debug, Serialize)]
+struct QueryParams(Vec<(String, String)>);
+
+impl Arbitrary for QueryParams {
+    type Parameters = Rc<ArbitraryParameters>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        let mut query_params = vec![];
+        for ref_or_param in args.operation.parameters.iter() {
+            match ref_or_param.to_item_ref() {
+                Parameter::Query { parameter_data, .. } => {
+                    query_params.push((Just(parameter_data.name.clone()), any::<String>()))
+                }
+                _ => continue,
+            }
+        }
+        query_params.prop_map(QueryParams).boxed()
+    }
+    type Strategy = BoxedStrategy<QueryParams>;
+}
+
+#[derive(Debug, Serialize)]
+pub struct Payload {
+    query_params: QueryParams,
+    path_params: PathParams,
+    headers: Headers,
+    body: OptionalJSON,
+    // TODO: add cookies
+}
+
+impl Arbitrary for Payload {
+    type Parameters = Rc<ArbitraryParameters>;
+    type Strategy = BoxedStrategy<Payload>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        let args = args;
+        any_with::<(QueryParams, PathParams, Headers, OptionalJSON)>((
+            args.clone(),
+            args.clone(),
+            args.clone(),
+            args,
+        ))
+        .prop_map(|(query_params, path_params, headers, body)| Payload {
+            query_params,
+            path_params,
+            headers,
+            body,
+        })
+        .boxed()
+    }
+}
+
+impl Payload {
+    pub fn query_params(&self) -> &Vec<(String, String)> {
+        &self.query_params.0
+    }
+
+    pub fn path_params(&self) -> &Vec<(String, String)> {
+        &self.path_params.0
+    }
+
+    pub fn headers(&self) -> &Vec<(String, String)> {
+        &self.headers.0
+    }
+
+    pub fn body(&self) -> Option<&serde_json::Value> {
+        match &self.body.0 {
+            Some(json) => Some(json),
+            None => None,
+        }
+    }
 }
 
 #[cfg(test)]
