@@ -28,6 +28,11 @@ struct Args {
     /// additional header to send
     #[argh(option, short = 'H')]
     header: Vec<Header>,
+
+    /// maximum number of test cases that will run for each combination of endpoint
+    /// and method (default: 256)
+    #[argh(option, default = "256")]
+    max_test_case_count: u32,
 }
 
 #[derive(Debug)]
@@ -86,6 +91,7 @@ fn main() -> Result<()> {
         args.url.into(),
         args.ignore_status_code,
         args.header.into_iter().map(Into::into).collect(),
+        args.max_test_case_count,
     )
     .run();
 
