@@ -24,6 +24,7 @@ pub struct Fuzzer {
     url: Url,
     ignored_status_codes: Vec<u16>,
     extra_headers: HashMap<String, String>,
+    max_test_case_count: u32,
 }
 
 impl Fuzzer {
@@ -32,12 +33,14 @@ impl Fuzzer {
         url: Url,
         ignored_status_codes: Vec<u16>,
         extra_headers: HashMap<String, String>,
+        max_test_case_count: u32,
     ) -> Fuzzer {
         Fuzzer {
             schema,
             url,
             extra_headers,
             ignored_status_codes,
+            max_test_case_count,
         }
     }
 
@@ -47,9 +50,9 @@ impl Fuzzer {
                 "openapi-fuzzer.regressions",
             ))),
             verbose: 0,
+            cases: self.max_test_case_count,
             ..Config::default()
         };
-        let mut runner = TestRunner::new(config);
         let max_path_length = self.schema.paths.iter().map(|(path, _)| path.len()).max();
 
         for (path_with_params, ref_or_item) in self.schema.paths.iter() {
@@ -68,7 +71,7 @@ impl Fuzzer {
 
             for (method, op) in operations {
                 if let Some(operation) = op {
-                    let result = runner.run(
+                    let result = TestRunner::new(config.clone()).run(
                         &any_with::<Payload>(Rc::new(ArbitraryParameters::new(Box::new(
                             operation.clone(),
                         )))),
