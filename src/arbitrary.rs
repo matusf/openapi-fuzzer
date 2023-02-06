@@ -12,11 +12,11 @@ use proptest::{
 use serde::Serialize;
 
 pub struct ArbitraryParameters {
-    operation: Box<Operation>,
+    operation: Operation,
 }
 
 impl ArbitraryParameters {
-    pub fn new(operation: Box<Operation>) -> Self {
+    pub fn new(operation: Operation) -> Self {
         ArbitraryParameters { operation }
     }
 }
