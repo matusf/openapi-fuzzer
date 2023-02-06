@@ -81,7 +81,8 @@ impl From<UrlWithTrailingSlash> for Url {
 
 fn main() -> Result<()> {
     let args: Args = argh::from_env();
-    let specfile = std::fs::read_to_string(&args.spec)?;
+    let specfile =
+        std::fs::read_to_string(&args.spec).context(format!("Unable to read {:?}", &args.spec))?;
     let openapi_schema: OpenAPI =
         serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
     let openapi_schema = openapi_schema.deref_all();
