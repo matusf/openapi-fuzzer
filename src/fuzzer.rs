@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
+    mem,
     rc::Rc,
 };
 
@@ -53,28 +54,29 @@ impl Fuzzer {
             cases: self.max_test_case_count,
             ..Config::default()
         };
-        let max_path_length = self.schema.paths.iter().map(|(path, _)| path.len()).max();
+        let paths = mem::take(&mut self.schema.paths);
+        let max_path_length = paths.iter().map(|(path, _)| path.len()).max();
 
-        for (path_with_params, ref_or_item) in self.schema.paths.iter() {
+        for (path_with_params, mut ref_or_item) in paths {
             let path_with_params = path_with_params.trim_start_matches('/');
-            let item = ref_or_item.to_item_ref();
+            let item = ref_or_item.to_item_mut();
             let operations = vec![
-                ("GET", &item.get),
-                ("PUT", &item.put),
-                ("POST", &item.post),
-                ("DELETE", &item.delete),
-                ("OPTIONS", &item.options),
-                ("HEAD", &item.head),
-                ("PATCH", &item.patch),
-                ("TRACE", &item.trace),
+                ("GET", item.get.take()),
+                ("PUT", item.put.take()),
+                ("POST", item.post.take()),
+                ("DELETE", item.delete.take()),
+                ("OPTIONS", item.options.take()),
+                ("HEAD", item.head.take()),
+                ("PATCH", item.patch.take()),
+                ("TRACE", item.trace.take()),
             ];
 
             for (method, op) in operations {
-                if let Some(operation) = op {
+                if let Some(mut operation) = op {
+                    let responses = mem::take(&mut operation.responses.responses);
+
                     let result = TestRunner::new(config.clone()).run(
-                        &any_with::<Payload>(Rc::new(ArbitraryParameters::new(Box::new(
-                            operation.clone(),
-                        )))),
+                        &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
                         |payload| {
                             let response = match Fuzzer::send_request(
                                 &self.url,
@@ -91,20 +93,16 @@ impl Fuzzer {
                                 }
                             };
 
-                            match self
-                                .is_expected_response(&response, &operation.responses.responses)
-                            {
+                            match self.is_expected_response(&response, &responses) {
                                 true => Ok(()),
                                 false => {
                                     Fuzzer::save_finding(
                                         path_with_params,
                                         method,
-                                        &payload,
+                                        payload,
                                         &response,
                                     )?;
-                                    Err(TestCaseError::Fail(
-                                        format!("{}", response.status()).into(),
-                                    ))
+                                    Err(TestCaseError::Fail("".into()))
                                 }
                             }
                         },
@@ -195,7 +193,7 @@ impl Fuzzer {
     fn save_finding(
         path: &str,
         method: &str,
-        payload: &Payload,
+        payload: Payload,
         response: &ureq::Response,
     ) -> std::io::Result<()> {
         let results_dir = format!(
