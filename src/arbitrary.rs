@@ -9,7 +9,7 @@ use proptest::{
     prelude::{any_with, Arbitrary},
     strategy::{BoxedStrategy, Just, Strategy},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub struct ArbitraryParameters {
     operation: Operation,
@@ -68,7 +68,7 @@ fn any_json(schema_kind: &SchemaKind) -> impl Strategy<Value = serde_json::Value
     schema_kind_to_json(schema_kind)
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct OptionalJSON(Option<serde_json::Value>);
 
 impl Arbitrary for OptionalJSON {
@@ -99,7 +99,7 @@ impl Arbitrary for OptionalJSON {
     type Strategy = BoxedStrategy<OptionalJSON>;
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct Headers(Vec<(String, String)>);
 
 impl Arbitrary for Headers {
@@ -122,7 +122,7 @@ impl Arbitrary for Headers {
     type Strategy = BoxedStrategy<Headers>;
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PathParams(Vec<(String, String)>);
 
 impl Arbitrary for PathParams {
@@ -143,7 +143,7 @@ impl Arbitrary for PathParams {
     type Strategy = BoxedStrategy<PathParams>;
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct QueryParams(Vec<(String, String)>);
 
 impl Arbitrary for QueryParams {
@@ -164,7 +164,7 @@ impl Arbitrary for QueryParams {
     type Strategy = BoxedStrategy<QueryParams>;
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Payload {
     query_params: QueryParams,
     path_params: PathParams,
