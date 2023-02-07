@@ -13,11 +13,18 @@ use proptest::{
     prelude::any_with,
     test_runner::{Config, FileFailurePersistence, TestCaseError, TestError, TestRunner},
 };
-use serde_json::json;
+use serde::{Deserialize, Serialize};
 use ureq::OrAnyStatus;
 use url::Url;
 
 use crate::arbitrary::{ArbitraryParameters, Payload};
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct FuzzResult<'a> {
+    pub payload: Payload,
+    pub path: &'a str,
+    pub method: &'a str,
+}
 
 #[derive(Debug)]
 pub struct Fuzzer {
@@ -142,7 +149,7 @@ impl Fuzzer {
         }
     }
 
-    fn send_request(
+    pub fn send_request(
         url: &Url,
         mut path_with_params: String,
         method: &str,
@@ -194,10 +201,17 @@ impl Fuzzer {
             method,
             response.status()
         );
-        let results_file = format!("{}/{:x}.json", results_dir, rand::random::<u32>());
+        let results_file = format!("{results_dir}/{:x}.json", rand::random::<u32>());
         fs::create_dir_all(&results_dir)?;
 
-        serde_json::to_writer_pretty(&File::create(results_file)?, &json!({ "payload": payload }))
-            .map_err(|e| e.into())
+        serde_json::to_writer_pretty(
+            &File::create(results_file)?,
+            &FuzzResult {
+                payload,
+                path,
+                method,
+            },
+        )
+        .map_err(|e| e.into())
     }
 }
