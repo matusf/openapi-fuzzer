@@ -25,7 +25,3 @@ proptest = "1.1.0"
 indexmap = "1.9.1"
 
 [dev-dependencies]
-
-[[bin]]
-name = "openapi-fuzzer-resender"
-path = "src/bin/resender.rs"
