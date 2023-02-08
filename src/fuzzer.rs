@@ -62,7 +62,7 @@ impl Fuzzer {
             ..Config::default()
         };
         let paths = mem::take(&mut self.schema.paths);
-        let max_path_length = paths.iter().map(|(path, _)| path.len()).max();
+        let max_path_length = paths.iter().map(|(path, _)| path.len()).max().unwrap_or(0);
 
         for (path_with_params, mut ref_or_item) in paths {
             let path_with_params = path_with_params.trim_start_matches('/');
@@ -78,71 +78,52 @@ impl Fuzzer {
                 ("TRACE", item.trace.take()),
             ];
 
-            for (method, op) in operations {
-                if let Some(mut operation) = op {
-                    let responses = mem::take(&mut operation.responses.responses);
+            for (method, mut operation) in operations
+                .into_iter()
+                .filter_map(|(method, operation)| operation.map(|operation| (method, operation)))
+            {
+                let responses = mem::take(&mut operation.responses.responses);
 
-                    let result = TestRunner::new(config.clone()).run(
-                        &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
-                        |payload| {
-                            let response = match Fuzzer::send_request(
-                                &self.url,
-                                path_with_params.to_owned(),
-                                method,
-                                &payload,
-                                &self.extra_headers,
-                            ) {
-                                Ok(response) => response,
-                                Err(e) => {
-                                    return Err(TestCaseError::Fail(
-                                        format!("unable to send request: {e}").into(),
-                                    ))
-                                }
-                            };
-
-                            match self.is_expected_response(&response, &responses) {
-                                true => Ok(()),
-                                false => {
-                                    Err(TestCaseError::Fail(response.status().to_string().into()))
-                                }
+                let result = TestRunner::new(config.clone()).run(
+                    &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
+                    |payload| {
+                        let response = match Fuzzer::send_request(
+                            &self.url,
+                            path_with_params.to_owned(),
+                            method,
+                            &payload,
+                            &self.extra_headers,
+                        ) {
+                            Ok(response) => response,
+                            Err(e) => {
+                                return Err(TestCaseError::Fail(
+                                    format!("unable to send request: {e}").into(),
+                                ))
                             }
-                        },
-                    );
+                        };
 
-                    match result {
-                        Err(TestError::Fail(status_code, payload)) => {
-                            println!(
-                                "{:7} {:width$} {:^7}",
-                                &method,
-                                &path_with_params,
-                                "failed",
-                                width = max_path_length.unwrap()
-                            );
-                            Fuzzer::save_finding(
-                                path_with_params,
-                                method,
-                                payload,
-                                status_code.message(),
-                            )?;
+                        match self.is_expected_response(&response, &responses) {
+                            true => Ok(()),
+                            false => Err(TestCaseError::Fail(response.status().to_string().into())),
                         }
-                        Ok(()) => {
-                            println!(
-                                "{:7} {:width$} {:^7}",
-                                &method,
-                                &path_with_params,
-                                "ok",
-                                width = max_path_length.unwrap()
-                            )
-                        }
-                        Err(TestError::Abort(_)) => {
-                            println!(
-                                "{:7} {:width$} {:^7}",
-                                &method,
-                                &path_with_params,
-                                "aborted",
-                                width = max_path_length.unwrap()
-                            )
-                        }
+                    },
+                );
+
+                match result {
+                    Err(TestError::Fail(status_code, payload)) => {
+                        println!("{method:7} {path_with_params:max_path_length$} failed ");
+                        Fuzzer::save_finding(
+                            path_with_params,
+                            method,
+                            payload,
+                            status_code.message(),
+                        )?;
+                    }
+                    Ok(()) => {
+                        println!("{method:7} {path_with_params:max_path_length$}   ok   ")
+                    }
+                    Err(TestError::Abort(_)) => {
+                        println!("{method:7} {path_with_params:max_path_length$} aborted")
                     }
                 }
             }
