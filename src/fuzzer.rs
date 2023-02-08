@@ -52,7 +52,7 @@ impl Fuzzer {
         }
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self) -> Result<()> {
         let config = Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
                 "openapi-fuzzer.regressions",
@@ -95,7 +95,7 @@ impl Fuzzer {
                                 Ok(response) => response,
                                 Err(e) => {
                                     return Err(TestCaseError::Fail(
-                                        format!("unable to send request: {}", e).into(),
+                                        format!("unable to send request: {e}").into(),
                                     ))
                                 }
                             };
@@ -103,20 +103,14 @@ impl Fuzzer {
                             match self.is_expected_response(&response, &responses) {
                                 true => Ok(()),
                                 false => {
-                                    Fuzzer::save_finding(
-                                        path_with_params,
-                                        method,
-                                        payload,
-                                        &response,
-                                    )?;
-                                    Err(TestCaseError::Fail("".into()))
+                                    Err(TestCaseError::Fail(response.status().to_string().into()))
                                 }
                             }
                         },
                     );
 
                     match result {
-                        Err(TestError::Fail(_, _)) => {
+                        Err(TestError::Fail(status_code, payload)) => {
                             println!(
                                 "{:7} {:width$} {:^7}",
                                 &method,
@@ -124,6 +118,12 @@ impl Fuzzer {
                                 "failed",
                                 width = max_path_length.unwrap()
                             );
+                            Fuzzer::save_finding(
+                                path_with_params,
+                                method,
+                                payload,
+                                status_code.message(),
+                            )?;
                         }
                         Ok(()) => {
                             println!(
@@ -147,6 +147,8 @@ impl Fuzzer {
                 }
             }
         }
+
+        Ok(())
     }
 
     pub fn send_request(
@@ -157,7 +159,7 @@ impl Fuzzer {
         extra_headers: &HashMap<String, String>,
     ) -> Result<ureq::Response> {
         for (name, value) in payload.path_params().iter() {
-            path_with_params = path_with_params.replace(&format!("{{{}}}", name), value);
+            path_with_params = path_with_params.replace(&format!("{{{name}}}"), value);
         }
         let mut request = ureq::request_url(method, &url.join(&path_with_params)?);
 
@@ -193,17 +195,15 @@ impl Fuzzer {
         path: &str,
         method: &str,
         payload: Payload,
-        response: &ureq::Response,
+        status_code: &str,
     ) -> std::io::Result<()> {
         let results_dir = format!(
-            "openapi-fuzzer-results/{}/{}/{}",
-            path.trim_matches('/').replace('/', "-"),
-            method,
-            response.status()
+            "openapi-fuzzer-results/{}/{method}/{status_code}",
+            path.trim_matches('/').replace('/', "-")
         );
-        let results_file = format!("{results_dir}/{:x}.json", rand::random::<u32>());
-        fs::create_dir_all(&results_dir)?;
+        let results_file = format!("{results_dir}/result.json");
 
+        fs::create_dir_all(&results_dir)?;
         serde_json::to_writer_pretty(
             &File::create(results_file)?,
             &FuzzResult {

@@ -133,7 +133,7 @@ fn main() -> Result<()> {
                 args.header.into_iter().map(Into::into).collect(),
                 args.max_test_case_count,
             )
-            .run();
+            .run()?;
         }
         Subcommands::Resend(args) => {
             let json = fs::read_to_string(&args.file)
