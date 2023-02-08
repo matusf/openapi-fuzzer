@@ -146,6 +146,7 @@ fn main() -> Result<()> {
                 &result.payload,
                 &args.header.into_iter().map(Into::into).collect(),
             )?;
+            eprintln!("{} ({})", response.status(), response.status_text());
             println!("{}", response.into_string()?);
         }
     };
