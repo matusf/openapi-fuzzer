@@ -78,7 +78,7 @@ impl FromStr for Header {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts = s.splitn(2, ':').collect::<Vec<_>>();
+        let parts: Vec<_> = s.splitn(2, ':').collect();
         if parts.len() != 2 {
             return Err("invalid header format".to_string());
         }
