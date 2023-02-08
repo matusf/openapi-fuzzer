@@ -243,7 +243,7 @@ mod test {
 
         match result {
             Err(TestError::Fail(_, value)) => {
-                println!("Found minimal failing case: {}", value);
+                println!("Found minimal failing case: {value}");
             }
             result => panic!("Unexpected result: {:?}", result),
         }
@@ -279,7 +279,7 @@ mod test {
 
         match result {
             Err(TestError::Fail(_, value)) => {
-                println!("Found minimal failing case: {}", value);
+                println!("Found minimal failing case: {value}");
                 Ok(())
             }
             result => panic!("Unexpected result: {:?}", result),
