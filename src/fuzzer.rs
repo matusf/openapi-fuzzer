@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     fs::{self, File},
     mem,
@@ -110,13 +111,18 @@ impl Fuzzer {
                 );
 
                 match result {
-                    Err(TestError::Fail(status_code, payload)) => {
+                    Err(TestError::Fail(reason, payload)) => {
+                        let reason: Cow<str> = reason.message().into();
+                        let status_code = reason
+                            .parse::<u16>()
+                            .map_err(|_| anyhow::Error::msg(reason.into_owned()))?;
+
                         println!("{method:7} {path_with_params:max_path_length$} failed ");
                         Fuzzer::save_finding(
                             path_with_params,
                             method,
                             payload,
-                            status_code.message(),
+                            &status_code,
                         )?;
                     }
                     Ok(()) => {
@@ -176,7 +182,7 @@ impl Fuzzer {
         path: &str,
         method: &str,
         payload: Payload,
-        status_code: &str,
+        status_code: &u16,
     ) -> std::io::Result<()> {
         let results_dir = format!(
             "openapi-fuzzer-results/{}/{method}/{status_code}",
