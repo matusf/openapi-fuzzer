@@ -7,7 +7,7 @@ use proptest::{
     arbitrary::any,
     collection::vec,
     prelude::{any_with, Arbitrary},
-    strategy::{BoxedStrategy, Just, Strategy},
+    strategy::{BoxedStrategy, Just, Strategy, Union},
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +60,12 @@ fn schema_kind_to_json(schema_kind: &SchemaKind) -> BoxedStrategy<serde_json::Va
     match schema_kind {
         SchemaKind::Any(_any) => any::<String>().prop_map(serde_json::Value::String).boxed(),
         SchemaKind::Type(schema_type) => schema_type_to_json(schema_type).boxed(),
+        SchemaKind::OneOf { one_of } => Union::new(
+            one_of
+                .iter()
+                .map(|ref_of_schema| schema_kind_to_json(&ref_of_schema.to_item_ref().schema_kind)),
+        )
+        .boxed(),
         _ => unimplemented!(),
     }
 }
