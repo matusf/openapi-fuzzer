@@ -52,6 +52,11 @@ struct RunArgs {
     /// and method (default: 256)
     #[argh(option, default = "256")]
     max_test_case_count: u32,
+
+    /// directory for results with minimal generated payload used for resending requests
+    /// (default: output)
+    #[argh(option, short = 'o', default = "String::from(\"output\").into()")]
+    output: PathBuf,
 }
 
 #[derive(FromArgs, Debug, PartialEq)]
@@ -132,6 +137,7 @@ fn main() -> Result<()> {
                 args.ignore_status_code,
                 args.header.into_iter().map(Into::into).collect(),
                 args.max_test_case_count,
+                args.output,
             )
             .run()?;
         }
