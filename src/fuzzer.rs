@@ -3,10 +3,11 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     mem,
+    path::PathBuf,
     rc::Rc,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use indexmap::IndexMap;
 use openapi_utils::ReferenceOrExt;
 use openapiv3::{OpenAPI, ReferenceOr, Response, StatusCode};
@@ -34,6 +35,8 @@ pub struct Fuzzer {
     ignored_status_codes: Vec<u16>,
     extra_headers: HashMap<String, String>,
     max_test_case_count: u32,
+    results_dir: PathBuf,
+    stats_dir: PathBuf,
 }
 
 impl Fuzzer {
@@ -43,6 +46,7 @@ impl Fuzzer {
         ignored_status_codes: Vec<u16>,
         extra_headers: HashMap<String, String>,
         max_test_case_count: u32,
+        output_dir: PathBuf,
     ) -> Fuzzer {
         Fuzzer {
             schema,
@@ -50,10 +54,19 @@ impl Fuzzer {
             extra_headers,
             ignored_status_codes,
             max_test_case_count,
+            results_dir: output_dir.join("results"),
+            stats_dir: output_dir.join("stats"),
         }
     }
 
     pub fn run(&mut self) -> Result<()> {
+        fs::create_dir_all(&self.results_dir).context(format!(
+            "Unable to create directory: {:?}",
+            self.results_dir
+        ))?;
+        fs::create_dir_all(&self.stats_dir)
+            .context(format!("Unable to create directory: {:?}", self.stats_dir))?;
+
         let config = Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
                 "openapi-fuzzer.regressions",
@@ -88,20 +101,16 @@ impl Fuzzer {
                 let result = TestRunner::new(config.clone()).run(
                     &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
                     |payload| {
-                        let response = match Fuzzer::send_request(
+                        let response = Fuzzer::send_request(
                             &self.url,
                             path_with_params.to_owned(),
                             method,
                             &payload,
                             &self.extra_headers,
-                        ) {
-                            Ok(response) => response,
-                            Err(e) => {
-                                return Err(TestCaseError::Fail(
-                                    format!("unable to send request: {e}").into(),
-                                ))
-                            }
-                        };
+                        )
+                        .map_err(|e| {
+                            TestCaseError::Fail(format!("unable to send request: {e}").into())
+                        })?;
 
                         match self.is_expected_response(&response, &responses) {
                             true => Ok(()),
@@ -118,12 +127,7 @@ impl Fuzzer {
                             .map_err(|_| anyhow::Error::msg(reason.into_owned()))?;
 
                         println!("{method:7} {path_with_params:max_path_length$} failed ");
-                        Fuzzer::save_finding(
-                            path_with_params,
-                            method,
-                            payload,
-                            &status_code,
-                        )?;
+                        self.save_finding(path_with_params, method, payload, &status_code)?;
                     }
                     Ok(()) => {
                         println!("{method:7} {path_with_params:max_path_length$}   ok   ")
@@ -179,20 +183,19 @@ impl Fuzzer {
     }
 
     fn save_finding(
+        &self,
         path: &str,
         method: &str,
         payload: Payload,
         status_code: &u16,
-    ) -> std::io::Result<()> {
-        let results_dir = format!(
-            "openapi-fuzzer-results/{}/{method}/{status_code}",
+    ) -> Result<()> {
+        let file = format!(
+            "{}-{method}-{status_code}.json",
             path.trim_matches('/').replace('/', "-")
         );
-        let results_file = format!("{results_dir}/result.json");
-
-        fs::create_dir_all(&results_dir)?;
         serde_json::to_writer_pretty(
-            &File::create(results_file)?,
+            &File::create(self.results_dir.join(&file))
+                .context(format!("Unable to create file: {file:?}"))?,
             &FuzzResult {
                 payload,
                 path,
