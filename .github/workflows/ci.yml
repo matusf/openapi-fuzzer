@@ -2,26 +2,28 @@ name: CI
 
 on:
   push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  lint:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v1
+      - name: checkout
+        uses: actions/checkout@v3
 
-      - uses: actions-rs/toolchain@v1
+      - name: install Rust
+        uses: dtolnay/rust-toolchain@master
         with:
-          components: rustfmt, clippy
           toolchain: stable
+          components: clippy, rustfmt
 
-      - name: Lint with rustfmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
+      - name: lint
+        run: cargo clippy
 
-      - name: Lint with clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets
+      - name: check format
+        run: cargo fmt --check
+
+      - name: test
+        run: cargo test
