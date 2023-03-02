@@ -1,9 +1,10 @@
 mod arbitrary;
 mod fuzzer;
+mod stats;
 
-use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::{fs, time::Instant};
 
 use anyhow::{Context, Result};
 use argh::FromArgs;
@@ -53,10 +54,15 @@ struct RunArgs {
     #[argh(option, default = "256")]
     max_test_case_count: u32,
 
-    /// directory for results with minimal generated payload used for resending requests
-    /// (default: output)
+    /// directory for results with minimal generated payload used for resending requests.
+    /// findings from fuzzer will be located in results folder in this folder (default: output)
     #[argh(option, short = 'o', default = "String::from(\"output\").into()")]
     output: PathBuf,
+
+    /// save statistics for graph generation. the statistics will be located in folder
+    /// stats in output folder (default: false)
+    #[argh(switch)]
+    save_stats: bool,
 }
 
 #[derive(FromArgs, Debug, PartialEq)]
@@ -131,6 +137,7 @@ fn main() -> Result<()> {
                 serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
             let openapi_schema = openapi_schema.deref_all();
 
+            let now = Instant::now();
             Fuzzer::new(
                 openapi_schema,
                 args.url.into(),
@@ -138,8 +145,10 @@ fn main() -> Result<()> {
                 args.header.into_iter().map(Into::into).collect(),
                 args.max_test_case_count,
                 args.output,
+                args.save_stats,
             )
             .run()?;
+            println!("Elapsed time: {}s", now.elapsed().as_secs());
         }
         Subcommands::Resend(args) => {
             let json = fs::read_to_string(&args.file)

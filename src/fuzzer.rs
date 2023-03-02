@@ -1,13 +1,15 @@
 use std::{
     borrow::Cow,
+    cell::RefCell,
     collections::HashMap,
     fs::{self, File},
     mem,
     path::PathBuf,
     rc::Rc,
+    time::Instant,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use indexmap::IndexMap;
 use openapi_utils::ReferenceOrExt;
 use openapiv3::{OpenAPI, ReferenceOr, Response, StatusCode};
@@ -19,7 +21,10 @@ use serde::{Deserialize, Serialize};
 use ureq::OrAnyStatus;
 use url::Url;
 
-use crate::arbitrary::{ArbitraryParameters, Payload};
+use crate::{
+    arbitrary::{ArbitraryParameters, Payload},
+    stats::Stats,
+};
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FuzzResult<'a> {
@@ -37,6 +42,7 @@ pub struct Fuzzer {
     max_test_case_count: u32,
     results_dir: PathBuf,
     stats_dir: PathBuf,
+    save_stats: bool,
 }
 
 impl Fuzzer {
@@ -47,6 +53,7 @@ impl Fuzzer {
         extra_headers: HashMap<String, String>,
         max_test_case_count: u32,
         output_dir: PathBuf,
+        save_stats: bool,
     ) -> Fuzzer {
         Fuzzer {
             schema,
@@ -56,6 +63,7 @@ impl Fuzzer {
             max_test_case_count,
             results_dir: output_dir.join("results"),
             stats_dir: output_dir.join("stats"),
+            save_stats,
         }
     }
 
@@ -78,6 +86,9 @@ impl Fuzzer {
         let paths = mem::take(&mut self.schema.paths);
         let max_path_length = paths.iter().map(|(path, _)| path.len()).max().unwrap_or(0);
 
+        println!("\x1B[1mMETHOD  {path:max_path_length$} STATUS   MEAN (μs) STD.DEV. MIN (μs)   MAX (μs)\x1B[0m",
+            path = "PATH"
+        );
         for (path_with_params, mut ref_or_item) in paths {
             let path_with_params = path_with_params.trim_start_matches('/');
             let item = ref_or_item.to_item_mut();
@@ -98,9 +109,12 @@ impl Fuzzer {
             {
                 let responses = mem::take(&mut operation.responses.responses);
 
+                let times = RefCell::new(vec![]);
+
                 let result = TestRunner::new(config.clone()).run(
                     &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
                     |payload| {
+                        let now = Instant::now();
                         let response = Fuzzer::send_request(
                             &self.url,
                             path_with_params.to_owned(),
@@ -112,30 +126,19 @@ impl Fuzzer {
                             TestCaseError::Fail(format!("unable to send request: {e}").into())
                         })?;
 
+                        times.borrow_mut().push(now.elapsed().as_micros());
+
                         match self.is_expected_response(&response, &responses) {
                             true => Ok(()),
                             false => Err(TestCaseError::Fail(response.status().to_string().into())),
                         }
                     },
                 );
-
-                match result {
-                    Err(TestError::Fail(reason, payload)) => {
-                        let reason: Cow<str> = reason.message().into();
-                        let status_code = reason
-                            .parse::<u16>()
-                            .map_err(|_| anyhow::Error::msg(reason.into_owned()))?;
-
-                        println!("{method:7} {path_with_params:max_path_length$} failed ");
-                        self.save_finding(path_with_params, method, payload, &status_code)?;
-                    }
-                    Ok(()) => {
-                        println!("{method:7} {path_with_params:max_path_length$}   ok   ")
-                    }
-                    Err(TestError::Abort(_)) => {
-                        println!("{method:7} {path_with_params:max_path_length$} aborted")
-                    }
+                let times = times.into_inner();
+                if self.save_stats {
+                    self.save_stats(path_with_params, method, &times)?;
                 }
+                self.report_run(method, path_with_params, result, max_path_length, &times)?
             }
         }
 
@@ -211,5 +214,48 @@ impl Fuzzer {
             },
         )
         .map_err(|e| e.into())
+    }
+
+    fn save_stats(&self, path: &str, method: &str, times: &[u128]) -> Result<()> {
+        let file = format!("{}-{method}.json", path.trim_matches('/').replace('/', "-"));
+
+        serde_json::to_writer(
+            &File::create(self.stats_dir.join(&file))
+                .context(format!("Unable to create file: {file:?}"))?,
+            times,
+        )
+        .map_err(|e| e.into())
+    }
+
+    fn report_run(
+        &self,
+        method: &str,
+        path_with_params: &str,
+        result: Result<(), TestError<Payload>>,
+        max_path_length: usize,
+        times: &[u128],
+    ) -> Result<()> {
+        let status = match result {
+            Err(TestError::Fail(reason, payload)) => {
+                let reason: Cow<str> = reason.message().into();
+                let status_code = reason
+                    .parse::<u16>()
+                    .map_err(|_| Error::msg(reason.into_owned()))?;
+
+                self.save_finding(path_with_params, method, payload, &status_code)?;
+                "failed"
+            }
+            Ok(()) => "ok",
+            Err(TestError::Abort(_)) => "aborted",
+        };
+
+        let Stats {
+            min,
+            max,
+            mean,
+            std_dev,
+        } = Stats::compute(times).ok_or(Error::msg("no requests sent"))?;
+        println!("{method:7} {path_with_params:max_path_length$} {status:^7} {mean:10.0} {std_dev:8.0} {min:8} {max:10}");
+        Ok(())
     }
 }
