@@ -60,15 +60,15 @@ fn schema_kind_to_json(schema_kind: &SchemaKind) -> BoxedStrategy<serde_json::Va
     match schema_kind {
         SchemaKind::Any(_any) => any::<String>().prop_map_into::<serde_json::Value>().boxed(),
         SchemaKind::Type(schema_type) => schema_type_to_json(schema_type).boxed(),
-        SchemaKind::AnyOf { any_of: schemas } | SchemaKind::OneOf { one_of: schemas } => {
-            Union::new(
-                schemas.iter().map(|ref_of_schema| {
-                    schema_kind_to_json(&ref_of_schema.to_item_ref().schema_kind)
-                }),
-            )
-            .boxed()
-        }
-        SchemaKind::AllOf { .. } => todo!(),
+        // TODO: AllOf should generate all schemas and merge them to one json object
+        SchemaKind::AllOf { all_of: schemas }
+        | SchemaKind::AnyOf { any_of: schemas }
+        | SchemaKind::OneOf { one_of: schemas } => Union::new(
+            schemas
+                .iter()
+                .map(|ref_of_schema| schema_kind_to_json(&ref_of_schema.to_item_ref().schema_kind)),
+        )
+        .boxed(),
     }
 }
 
