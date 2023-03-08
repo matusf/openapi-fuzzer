@@ -47,10 +47,10 @@ fn generate_json_array(array: &ArrayType) -> BoxedStrategy<serde_json::Value> {
 
 fn schema_type_to_json(schema_type: &Type) -> BoxedStrategy<serde_json::Value> {
     match schema_type {
-        Type::Boolean {} => any::<bool>().prop_map(Into::into).boxed(),
-        Type::Integer(_integer_type) => any::<i64>().prop_map(Into::into).boxed(),
-        Type::Number(_number_type) => any::<f32>().prop_map(Into::into).boxed(),
-        Type::String(_string_type) => any::<String>().prop_map(Into::into).boxed(),
+        Type::Boolean {} => any::<bool>().prop_map_into::<serde_json::Value>().boxed(),
+        Type::Integer(_integer_type) => any::<i64>().prop_map_into::<serde_json::Value>().boxed(),
+        Type::Number(_number_type) => any::<f32>().prop_map_into::<serde_json::Value>().boxed(),
+        Type::String(_string_type) => any::<String>().prop_map_into::<serde_json::Value>().boxed(),
         Type::Object(object_type) => generate_json_object(object_type),
         Type::Array(array_type) => generate_json_array(array_type),
     }
@@ -58,7 +58,7 @@ fn schema_type_to_json(schema_type: &Type) -> BoxedStrategy<serde_json::Value> {
 
 fn schema_kind_to_json(schema_kind: &SchemaKind) -> BoxedStrategy<serde_json::Value> {
     match schema_kind {
-        SchemaKind::Any(_any) => any::<String>().prop_map(serde_json::Value::String).boxed(),
+        SchemaKind::Any(_any) => any::<String>().prop_map_into::<serde_json::Value>().boxed(),
         SchemaKind::Type(schema_type) => schema_type_to_json(schema_type).boxed(),
         SchemaKind::AnyOf { any_of: schemas } | SchemaKind::OneOf { one_of: schemas } => {
             Union::new(
