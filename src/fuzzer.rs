@@ -33,6 +33,12 @@ pub struct FuzzResult<'a> {
     pub method: &'a str,
 }
 
+#[derive(Debug, Default, Serialize)]
+pub struct FuzzStats {
+    times: Vec<u128>,
+    did_failed: Vec<bool>,
+}
+
 #[derive(Debug)]
 pub struct Fuzzer {
     schema: OpenAPI,
@@ -109,7 +115,7 @@ impl Fuzzer {
             {
                 let responses = mem::take(&mut operation.responses.responses);
 
-                let times = RefCell::new(vec![]);
+                let stats = RefCell::new(FuzzStats::default());
 
                 let result = TestRunner::new(config.clone()).run(
                     &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
@@ -126,19 +132,27 @@ impl Fuzzer {
                             TestCaseError::Fail(format!("unable to send request: {e}").into())
                         })?;
 
-                        times.borrow_mut().push(now.elapsed().as_micros());
+                        let is_expected_response = self.is_expected_response(&response, &responses);
+                        stats.borrow_mut().times.push(now.elapsed().as_micros());
+                        stats.borrow_mut().did_failed.push(!is_expected_response);
 
-                        match self.is_expected_response(&response, &responses) {
+                        match is_expected_response {
                             true => Ok(()),
                             false => Err(TestCaseError::Fail(response.status().to_string().into())),
                         }
                     },
                 );
-                let times = times.into_inner();
+                let stats = stats.into_inner();
                 if self.save_stats {
-                    self.save_stats(path_with_params, method, &times)?;
+                    self.save_stats(path_with_params, method, &stats)?;
                 }
-                self.report_run(method, path_with_params, result, max_path_length, &times)?
+                self.report_run(
+                    method,
+                    path_with_params,
+                    result,
+                    max_path_length,
+                    &stats.times,
+                )?
             }
         }
 
@@ -216,13 +230,13 @@ impl Fuzzer {
         .map_err(|e| e.into())
     }
 
-    fn save_stats(&self, path: &str, method: &str, times: &[u128]) -> Result<()> {
+    fn save_stats(&self, path: &str, method: &str, stats: &FuzzStats) -> Result<()> {
         let file = format!("{}-{method}.json", path.trim_matches('/').replace('/', "-"));
 
         serde_json::to_writer(
             &File::create(self.stats_dir.join(&file))
                 .context(format!("Unable to create file: {file:?}"))?,
-            times,
+            stats,
         )
         .map_err(|e| e.into())
     }
