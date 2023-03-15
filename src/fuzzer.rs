@@ -4,7 +4,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     mem,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     time::Instant,
 };
@@ -47,8 +47,7 @@ pub struct Fuzzer {
     extra_headers: HashMap<String, String>,
     max_test_case_count: u32,
     results_dir: PathBuf,
-    stats_dir: PathBuf,
-    save_stats: bool,
+    stats_dir: Option<PathBuf>,
 }
 
 impl Fuzzer {
@@ -58,8 +57,8 @@ impl Fuzzer {
         ignored_status_codes: Vec<u16>,
         extra_headers: HashMap<String, String>,
         max_test_case_count: u32,
-        output_dir: PathBuf,
-        save_stats: bool,
+        results_dir: PathBuf,
+        stats_dir: Option<PathBuf>,
     ) -> Fuzzer {
         Fuzzer {
             schema,
@@ -67,9 +66,8 @@ impl Fuzzer {
             extra_headers,
             ignored_status_codes,
             max_test_case_count,
-            results_dir: output_dir.join("results"),
-            stats_dir: output_dir.join("stats"),
-            save_stats,
+            results_dir,
+            stats_dir,
         }
     }
 
@@ -78,8 +76,10 @@ impl Fuzzer {
             "Unable to create directory: {:?}",
             self.results_dir
         ))?;
-        fs::create_dir_all(&self.stats_dir)
-            .context(format!("Unable to create directory: {:?}", self.stats_dir))?;
+        if let Some(dir) = &self.stats_dir {
+            fs::create_dir_all(dir)
+                .context(format!("Unable to create directory: {:?}", self.stats_dir))?;
+        };
 
         let config = Config {
             failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
@@ -143,8 +143,8 @@ impl Fuzzer {
                     },
                 );
                 let stats = stats.into_inner();
-                if self.save_stats {
-                    self.save_stats(path_with_params, method, &stats)?;
+                if let Some(dir) = &self.stats_dir {
+                    self.save_stats(dir, path_with_params, method, &stats)?;
                 }
                 self.report_run(
                     method,
@@ -230,12 +230,11 @@ impl Fuzzer {
         .map_err(|e| e.into())
     }
 
-    fn save_stats(&self, path: &str, method: &str, stats: &FuzzStats) -> Result<()> {
+    fn save_stats(&self, dir: &Path, path: &str, method: &str, stats: &FuzzStats) -> Result<()> {
         let file = format!("{}-{method}.json", path.trim_matches('/').replace('/', "-"));
 
         serde_json::to_writer(
-            &File::create(self.stats_dir.join(&file))
-                .context(format!("Unable to create file: {file:?}"))?,
+            &File::create(dir.join(&file)).context(format!("Unable to create file: {file:?}"))?,
             stats,
         )
         .map_err(|e| e.into())
