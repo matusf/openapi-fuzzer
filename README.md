@@ -4,24 +4,35 @@
 
 Black-box fuzzer that fuzzes APIs based on [OpenAPI specification](https://github.com/OAI/OpenAPI-Specification/). All you need to do is to supply URL of the API and its specification. Find bugs for free!
 
-![demo](./demo.png)
+![image](https://user-images.githubusercontent.com/18228995/225413315-eab08df2-ed56-4b7a-8c8a-027c18d9a106.png)
 
 ## Findings
 
 The fuzzer has been used to find bugs in numerous software. Some of the well-known fuzzed software include[^1]:
 
-- Kubernetes
-  - [kubenetes#101350](https://github.com/kubernetes/kubernetes/issues/101350)
-  - [kubenetes#101348](https://github.com/kubernetes/kubernetes/issues/101348)
-  - [kubenetes#101355](https://github.com/kubernetes/kubernetes/issues/101355)
-- Gitea
-  - [gitea#15357](https://github.com/go-gitea/gitea/issues/15357)
-  - [gitea#15356](https://github.com/go-gitea/gitea/issues/15356)
-  - [gitea#15346](https://github.com/go-gitea/gitea/issues/15346)
-- Vault
-  - [vault#11310](https://github.com/hashicorp/vault/issues/11310)
-  - [vault#11311](https://github.com/hashicorp/vault/issues/11311)
-  - [vault#11313](https://github.com/hashicorp/vault/issues/11313)
+<details><summary><b>Kubernetes</b></summary>
+
+- [kubenetes#101350](https://github.com/kubernetes/kubernetes/issues/101350)
+- [kubenetes#101348](https://github.com/kubernetes/kubernetes/issues/101348)
+- [kubenetes#101355](https://github.com/kubernetes/kubernetes/issues/101355)
+
+</details>
+
+<details><summary><b>Gitea</b></summary>
+
+- [gitea#15357](https://github.com/go-gitea/gitea/issues/15357)
+- [gitea#15356](https://github.com/go-gitea/gitea/issues/15356)
+- [gitea#15346](https://github.com/go-gitea/gitea/issues/15346)
+
+</details>
+
+<details><summary><b>Vault</b></summary>
+
+- [vault#11310](https://github.com/hashicorp/vault/issues/11310)
+- [vault#11311](https://github.com/hashicorp/vault/issues/11311)
+- [vault#11313](https://github.com/hashicorp/vault/issues/11313)
+
+</details>
 
 The category of bugs differ, but some of the common are parsing bugs, invalid format bugs and querying non-existent entities. **If you have found bugs with this fuzzer, please reach out to me. I would love to hear from you.** Feel free to submit a PR and add your finding to the list above.
 
@@ -40,26 +51,32 @@ cd openapi-fuzzer
 # Install to the $PATH
 cargo install --path .
 
-# Or build (add --release to build optimized binary) inside the repo
-cargo build
+# Or build inside the repo
+cargo build --release
 ```
 
 ## Usage
 
-After installation you will have two binaries, `openapi-fuzzer` and `openapi-fuzzer-resender`. The `openapi-fuzzer` will fuzz the API according to the specification and report any findings. All findings will be located in a `results` directory in a JSON format. After you are done with fuzzing, you can use `openapi-fuzzer-resender` to resend payloads that triggered a bugs and examine the cause in depth.
->Note: This program only supports OpenAPI v3, both YAML and JSON. OpenAPI v2 is not supported and must be converted to v3 before usage. 
+After installation you will have the `openapi-fuzzer` binary available to you, which offers two subcommands - `run` and `resend`.  The `run` subcommand will fuzz the API according to the specification and report any findings. All findings will be stored in a JSON format in a `results` directory (the name of the directory can be specified by `--results-dir` flag).
+
+If the fuzzer finds a bug it will save the seed that leads to the generation of the payload triggering the bug. Those seeds are saved in a regressions file called `openapi-fuzzer.regressions`. The seeds will be used in the next runs of the fuzzer to check if the bug persists. You shall save it alongside your project.
+
+When you are done with fuzzing, you can use `openapi-fuzzer resend` to resend payloads that triggered bugs and examine the cause in depth.
+
+OpenAPI fuzzer supports version 3 of the OpenAPI specification in YAML or JSON format. You can convert older versions at [editor.swagger.io](https://editor.swagger.io/).
 
 ### Tips
 
-- When the fuzzer receives an unexpected status code, it will report is as a finding. However, many APIs do not specify client error status codes in the specification. To minimize false positive findings ignore status codes that you are not interested in with `-i` flag. It is adviced to fuzz it two stages. Firstly, run the fuzzer without `-i` flag for a minute. Then check `results` folder for the reported findings. If there are reports from status codes you do not care about, add them via `-i` flag and rerun the fuzzer.
-- Most APIs use some base prefix for endpoints like `/v1` or `/api`, however, the specifications are sometimes writen without it. Do not forget to **include the path prefix in the url**.
+- When the fuzzer receives an unexpected status code, it will report it as a finding. However, many APIs do not specify client error status codes in the specification. To minimize false positive findings ignore status codes that you are not interested in with `-i` flag. It is advised to fuzz it in two stages. Firstly, run the fuzzer without `-i` flag. Then check the `results` folder for the reported findings. If there are reports from status codes you do not care about, add them via `-i` flag and rerun the fuzzer.
+- Most APIs use some base prefix for endpoints like `/v1` or `/api`, however, the specifications are sometimes written without it. Do not forget to **include the path prefix in the url**.
 - You may add an extra header with `-H` flag. It may be useful when you would like to increase coverage by providing some sort of authorization.
+- Currently, the fuzzer makes 256 requests per endpoint. If all received responses are expected, it declares the endpoint as ok and continues to fuzz the next one. You can adjust this number by setting a `--max-test-case-count` flag.
 
-```txt
-$ openapi-fuzzer --help
-Usage: openapi-fuzzer -s <spec> -u <url> [-i <ignore-status-code>] [-H <header>]
+```console
+$ openapi-fuzzer run --help
+Usage: openapi-fuzzer run -s <spec> -u <url> [-i <ignore-status-code>] [-H <header>] [--max-test-case-count <max-test-case-count>] [-o <results-dir>] [--stats-dir <stats-dir>]
 
-OpenAPI fuzzer
+run openapi-fuzzer
 
 Options:
   -s, --spec        path to OpenAPI specification file
@@ -67,42 +84,63 @@ Options:
   -i, --ignore-status-code
                     status codes that will not be considered as finding
   -H, --header      additional header to send
+  --max-test-case-count
+                    maximum number of test cases that will run for each
+                    combination of endpoint and method (default: 256)
+  -o, --results-dir directory for results with minimal generated payload used
+                    for resending requests (default: results).
+  --stats-dir       directory for request times statistics. if no value is
+                    supplied, statistics will not be saved
   --help            display usage information
 
-
-$ openapi-fuzzer -s ./spec.yaml -u http://127.0.0.1:8200/v1/ -i 404
+$ openapi-fuzzer run -s ./spec.yaml -u http://127.0.0.1:8200/v1/ -i 404 -i 400
 ```
 
 ### Replaying findings
 
-When you are done fuzzing you can replay the findings. All findings are stored in the `results` folder in path according to finding's endpoint and method. To resend the same payload to API, you simply run `openapi-fuzzer-resender` with path to the finding file as an argument. You can overwrite the headers with `-H` flag as well, which is useful for example, when the authorization token expired.
+When you are done fuzzing you can replay the findings. All findings are stored in the `results` folder. Name of each file consists of concatenated endpoint, HTTP method and received status code. To resend the same payload to API, you need to run `openapi-fuzzer resend` and specify a path to the finding file as an argument and a url of the api. You can overwrite the headers with `-H` flag as well, which is useful, when you need authorization.
 
-```txt
-$ tree -L 3 results/
-results/
-├── sys-leases-renew
-│   └── POST
-│       └── 500
-└── sys-seal
-    └── POST
-        └── 500
+```console
+$ ls -1 results/
+api-v1-componentstatuses-{name}-GET-500.json
+api-v1-namespaces-{namespace}-configmaps-GET-500.json
+api-v1-namespaces-{namespace}-endpoints-GET-500.json
+api-v1-namespaces-{namespace}-events-GET-500.json
+api-v1-namespaces-{namespace}-limitranges-GET-500.json
+api-v1-namespaces-{namespace}-persistentvolumeclaims-GET-500.json
+api-v1-namespaces-{namespace}-pods-GET-500.json
+api-v1-namespaces-{namespace}-podtemplates-GET-500.json
+api-v1-namespaces-{namespace}-replicationcontrollers-GET-500.json
+api-v1-namespaces-{namespace}-resourcequotas-GET-500.json
+api-v1-namespaces-{namespace}-secrets-GET-500.json
+api-v1-namespaces-{namespace}-serviceaccounts-GET-500.json
+api-v1-namespaces-{namespace}-services-GET-500.json
+api-v1-watch-namespaces-{name}-GET-500.json
+...
 
-$ openapi-fuzzer-resender --help
-Usage: openapi-fuzzer-resender <file> [-H <header>]
+$ openapi-fuzzer resend --help
+Usage: openapi-fuzzer resend <file> [-H <header...>] -u <url>
 
-Resender of openapi-fuzzer results
+resend payload genereted by fuzzer
+
+Positional Arguments:
+  file              path to result file generated by fuzzer
 
 Options:
   -H, --header      extra header
+  -u, --url         url of api
   --help            display usage information
 
-$ openapi-fuzzer-resender results/sys-seal/POST/500/1b4e8a77.json
-Response[status: 500, status_text: Internal Server Error, url: http://127.0.0.1:8200/v1/sys/seal]
-{"errors":["1 error occurred: * missing client token"]}
+$ openapi-fuzzer resend --url https://minikubeca:8443 results/api-v1-componentstatuses-\{name\}-GET-500.json -H "Authorization: Bearer $KUBE_TOKEN" | jq
+500 (Internal Server Error)
+{
+  "kind": "Status",
+  "apiVersion": "v1",
+  "metadata": {},
+  "status": "Failure",
+  "message": "Component not found: ኊ0",
+  "code": 500
+}
 ```
-
-## Future plans
-
-- [ ] Add script for minimization of the findings
 
 [^1]: not all found bugs are linked
