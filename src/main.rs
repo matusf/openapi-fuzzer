@@ -54,15 +54,15 @@ struct RunArgs {
     #[argh(option, default = "256")]
     max_test_case_count: u32,
 
-    /// directory for results with minimal generated payload used for resending requests.
-    /// findings from fuzzer will be located in results folder in this folder (default: output)
-    #[argh(option, short = 'o', default = "String::from(\"output\").into()")]
-    output: PathBuf,
+    /// directory for results with minimal generated payload used for resending
+    /// requests (default: results).
+    #[argh(option, short = 'o', default = "String::from(\"results\").into()")]
+    results_dir: PathBuf,
 
-    /// save statistics for graph generation. the statistics will be located in folder
-    /// stats in output folder (default: false)
-    #[argh(switch)]
-    save_stats: bool,
+    /// directory for request times statistics. if no value is supplied, statistics
+    /// will not be saved
+    #[argh(option)]
+    stats_dir: Option<PathBuf>,
 }
 
 #[derive(FromArgs, Debug, PartialEq)]
@@ -144,8 +144,8 @@ fn main() -> Result<()> {
                 args.ignore_status_code,
                 args.header.into_iter().map(Into::into).collect(),
                 args.max_test_case_count,
-                args.output,
-                args.save_stats,
+                args.results_dir,
+                args.stats_dir,
             )
             .run()?;
             println!("Elapsed time: {}s", now.elapsed().as_secs());
