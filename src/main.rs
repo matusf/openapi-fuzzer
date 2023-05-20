@@ -3,6 +3,7 @@ mod fuzzer;
 mod stats;
 
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::str::FromStr;
 use std::{fs, time::Instant};
 
@@ -126,10 +127,10 @@ impl From<UrlWithTrailingSlash> for Url {
     }
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<ExitCode> {
     let args: Cli = argh::from_env();
 
-    match args.subcommands {
+    let exit_code = match args.subcommands {
         Subcommands::Run(args) => {
             let specfile = std::fs::read_to_string(&args.spec)
                 .context(format!("Unable to read {:?}", &args.spec))?;
@@ -138,7 +139,7 @@ fn main() -> Result<()> {
             let openapi_schema = openapi_schema.deref_all();
 
             let now = Instant::now();
-            Fuzzer::new(
+            let exit_code = Fuzzer::new(
                 openapi_schema,
                 args.url.into(),
                 args.ignore_status_code,
@@ -149,6 +150,7 @@ fn main() -> Result<()> {
             )
             .run()?;
             println!("Elapsed time: {}s", now.elapsed().as_secs());
+            exit_code
         }
         Subcommands::Resend(args) => {
             let json = fs::read_to_string(&args.file)
@@ -163,8 +165,9 @@ fn main() -> Result<()> {
             )?;
             eprintln!("{} ({})", response.status(), response.status_text());
             println!("{}", response.into_string()?);
+            ExitCode::SUCCESS
         }
     };
 
-    Ok(())
+    Ok(exit_code)
 }
