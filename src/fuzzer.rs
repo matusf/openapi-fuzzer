@@ -5,6 +5,7 @@ use std::{
     fs::{self, File},
     mem,
     path::{Path, PathBuf},
+    process::ExitCode,
     rc::Rc,
     time::Instant,
 };
@@ -71,7 +72,7 @@ impl Fuzzer {
         }
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<ExitCode> {
         fs::create_dir_all(&self.results_dir).context(format!(
             "Unable to create directory: {:?}",
             self.results_dir
@@ -89,6 +90,7 @@ impl Fuzzer {
             cases: self.max_test_case_count,
             ..Config::default()
         };
+        let mut test_failed = false;
         let paths = mem::take(&mut self.schema.paths);
         let max_path_length = paths.iter().map(|(path, _)| path.len()).max().unwrap_or(0);
 
@@ -146,17 +148,22 @@ impl Fuzzer {
                 if let Some(dir) = &self.stats_dir {
                     self.save_stats(dir, path_with_params, method, &stats)?;
                 }
+
+                test_failed |= result.is_err();
                 self.report_run(
                     method,
                     path_with_params,
                     result,
                     max_path_length,
                     &stats.times,
-                )?
+                )?;
             }
         }
 
-        Ok(())
+        match test_failed {
+            true => Ok(ExitCode::FAILURE),
+            false => Ok(ExitCode::SUCCESS),
+        }
     }
 
     pub fn send_request(
