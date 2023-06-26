@@ -117,7 +117,7 @@ impl Arbitrary for Headers {
         args.operation
             .parameters
             .iter()
-            .flat_map(|ref_or_param| match ref_or_param.to_item_ref() {
+            .filter_map(|ref_or_param| match ref_or_param.to_item_ref() {
                 Parameter::Header { parameter_data, .. } => {
                     Some((Just(parameter_data.name.clone()), any::<String>()))
                 }
@@ -138,10 +138,10 @@ impl Arbitrary for PathParams {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         let mut path_params = vec![];
-        for ref_or_param in args.operation.parameters.iter() {
+        for ref_or_param in &args.operation.parameters {
             match ref_or_param.to_item_ref() {
                 Parameter::Path { parameter_data, .. } => {
-                    path_params.push((Just(parameter_data.name.clone()), any::<String>()))
+                    path_params.push((Just(parameter_data.name.clone()), any::<String>()));
                 }
                 _ => continue,
             }
@@ -159,10 +159,10 @@ impl Arbitrary for QueryParams {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         let mut query_params = vec![];
-        for ref_or_param in args.operation.parameters.iter() {
+        for ref_or_param in &args.operation.parameters {
             match ref_or_param.to_item_ref() {
                 Parameter::Query { parameter_data, .. } => {
-                    query_params.push((Just(parameter_data.name.clone()), any::<String>()))
+                    query_params.push((Just(parameter_data.name.clone()), any::<String>()));
                 }
                 _ => continue,
             }
@@ -217,10 +217,7 @@ impl Payload {
     }
 
     pub fn body(&self) -> Option<&serde_json::Value> {
-        match &self.body.0 {
-            Some(json) => Some(json),
-            None => None,
-        }
+        self.body.0.as_ref()
     }
 }
 
@@ -229,7 +226,7 @@ mod test {
     use super::*;
     use anyhow::Result;
     use indexmap::indexmap;
-    use openapiv3::*;
+    use openapiv3::{IntegerType, ReferenceOr, Schema, StringType};
     use proptest::test_runner::{Config, FileFailurePersistence, TestError, TestRunner};
 
     #[test]

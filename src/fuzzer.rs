@@ -64,8 +64,8 @@ impl Fuzzer {
         Fuzzer {
             schema,
             url,
-            extra_headers,
             ignored_status_codes,
+            extra_headers,
             max_test_case_count,
             results_dir,
             stats_dir,
@@ -138,15 +138,14 @@ impl Fuzzer {
                         stats.borrow_mut().times.push(now.elapsed().as_micros());
                         stats.borrow_mut().did_failed.push(!is_expected_response);
 
-                        match is_expected_response {
-                            true => Ok(()),
-                            false => Err(TestCaseError::Fail(response.status().to_string().into())),
-                        }
+                        is_expected_response
+                            .then_some(())
+                            .ok_or(TestCaseError::Fail(response.status().to_string().into()))
                     },
                 );
                 let stats = stats.into_inner();
                 if let Some(dir) = &self.stats_dir {
-                    self.save_stats(dir, path_with_params, method, &stats)?;
+                    Fuzzer::save_stats(dir, path_with_params, method, &stats)?;
                 }
 
                 test_failed |= result.is_err();
@@ -160,9 +159,10 @@ impl Fuzzer {
             }
         }
 
-        match test_failed {
-            true => Ok(ExitCode::FAILURE),
-            false => Ok(ExitCode::SUCCESS),
+        if test_failed {
+            Ok(ExitCode::FAILURE)
+        } else {
+            Ok(ExitCode::SUCCESS)
         }
     }
 
@@ -179,7 +179,7 @@ impl Fuzzer {
         let mut request = ureq::request_url(method, &url.join(&path_with_params)?);
 
         for (param, value) in payload.query_params().iter() {
-            request = request.query(param, value)
+            request = request.query(param, value);
         }
 
         // Add headers overriding genereted ones with extra headers from command line
@@ -219,7 +219,7 @@ impl Fuzzer {
         path: &str,
         method: &str,
         payload: Payload,
-        status_code: &u16,
+        status_code: u16,
     ) -> Result<()> {
         let file = format!(
             "{}-{method}-{status_code}.json",
@@ -234,17 +234,17 @@ impl Fuzzer {
                 method,
             },
         )
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
-    fn save_stats(&self, dir: &Path, path: &str, method: &str, stats: &FuzzStats) -> Result<()> {
+    fn save_stats(dir: &Path, path: &str, method: &str, stats: &FuzzStats) -> Result<()> {
         let file = format!("{}-{method}.json", path.trim_matches('/').replace('/', "-"));
 
         serde_json::to_writer(
             &File::create(dir.join(&file)).context(format!("Unable to create file: {file:?}"))?,
             stats,
         )
-        .map_err(|e| e.into())
+        .map_err(Into::into)
     }
 
     fn report_run(
@@ -262,7 +262,7 @@ impl Fuzzer {
                     .parse::<u16>()
                     .map_err(|_| Error::msg(reason.into_owned()))?;
 
-                self.save_finding(path_with_params, method, payload, &status_code)?;
+                self.save_finding(path_with_params, method, payload, status_code)?;
                 "failed"
             }
             Ok(()) => "ok",
