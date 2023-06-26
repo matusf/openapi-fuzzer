@@ -17,7 +17,7 @@ use url::{ParseError, Url};
 use crate::fuzzer::FuzzResult;
 
 #[derive(FromArgs, PartialEq, Debug)]
-/// OpenAPI fuzzer - black-box fuzzer that fuzzes APIs based on OpenAPI specification
+/// openapi-fuzzer - black-box fuzzer that fuzzes APIs based on OpenAPI Specification
 struct Cli {
     #[argh(subcommand)]
     subcommands: Subcommands,
@@ -114,9 +114,10 @@ impl FromStr for UrlWithTrailingSlash {
     type Err = ParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.ends_with('/') {
-            true => Ok(UrlWithTrailingSlash(Url::from_str(s)?)),
-            false => Ok(UrlWithTrailingSlash(Url::from_str(&(s.to_owned() + "/"))?)),
+        if s.ends_with('/') {
+            Ok(UrlWithTrailingSlash(Url::from_str(s)?))
+        } else {
+            Ok(UrlWithTrailingSlash(Url::from_str(&(s.to_owned() + "/"))?))
         }
     }
 }
