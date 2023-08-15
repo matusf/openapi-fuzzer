@@ -38,13 +38,17 @@ The category of bugs differ, but some of the common are parsing bugs, invalid fo
 
 ## Building & installing
 
+### From crates.io
+
 To build the fuzzer, you will need to have [rust installed](https://www.rust-lang.org/learn/get-started).
 
 ```sh
-# Install from crates.io
 cargo install openapi-fuzzer
+```
 
-# Or download the repo and build locally
+### From source
+
+```sh
 git clone git@github.com:matusf/openapi-fuzzer.git
 cd openapi-fuzzer
 
@@ -53,6 +57,12 @@ cargo install --path .
 
 # Or build inside the repo
 cargo build --release
+```
+
+### Using containers
+
+```sh
+podman pull ghcr.io/matusf/openapi-fuzzer
 ```
 
 ## Usage
