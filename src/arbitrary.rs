@@ -226,8 +226,14 @@ mod test {
     use super::*;
     use anyhow::Result;
     use indexmap::indexmap;
-    use openapiv3::{IntegerType, ReferenceOr, Schema, StringType};
-    use proptest::test_runner::{Config, FileFailurePersistence, TestError, TestRunner};
+    use openapiv3::{
+        HeaderStyle, IntegerType, ParameterData, ParameterSchemaOrContent, ReferenceOr, Schema,
+        StringType,
+    };
+    use proptest::{
+        prop_assert, proptest,
+        test_runner::{Config, FileFailurePersistence, TestError, TestRunner},
+    };
 
     #[test]
     fn test_json_string() {
@@ -288,6 +294,42 @@ mod test {
                 Ok(())
             }
             result => panic!("Unexpected result: {:?}", result),
+        }
+    }
+
+    fn get_headers() -> BoxedStrategy<Headers> {
+        let operation = Operation {
+            parameters: vec![ReferenceOr::Item(Parameter::Header {
+                parameter_data: ParameterData {
+                    name: "foo".to_owned(),
+                    description: None,
+                    required: false,
+                    deprecated: None,
+                    format: ParameterSchemaOrContent::Content(Default::default()),
+                    example: None,
+                    examples: Default::default(),
+                    explode: None,
+                    extensions: Default::default(),
+                },
+                style: HeaderStyle::Simple,
+            })],
+            ..Default::default()
+        };
+        Headers::arbitrary_with(Rc::new(ArbitraryParameters { operation }))
+    }
+
+    fn is_valid_header_value_char(b: u8) -> bool {
+        match b {
+            b' ' | b'\t' | 33..=126 => true,
+            _ => false,
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_headers(headers in get_headers()) {
+            println!("{:?}",headers);
+            prop_assert!(headers.0.iter().all(|(_, v)| v.bytes().all(is_valid_header_value_char)));
         }
     }
 }
