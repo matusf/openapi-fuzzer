@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 326cae2d03e90083d2e7ddb4d1592970755d6a95b0d19127d3834b323aadda69 # shrinks to headers = Headers([("foo", "ጘ")])
