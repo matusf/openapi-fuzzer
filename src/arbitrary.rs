@@ -119,7 +119,7 @@ impl Arbitrary for Headers {
             .iter()
             .filter_map(|ref_or_param| match ref_or_param.to_item_ref() {
                 Parameter::Header { parameter_data, .. } => {
-                    Some((Just(parameter_data.name.clone()), any::<String>()))
+                    Some((Just(parameter_data.name.clone()), "[!-~ \t]*"))
                 }
                 _ => None,
             })
