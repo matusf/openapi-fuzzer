@@ -79,7 +79,7 @@ OpenAPI fuzzer supports version 3 of the OpenAPI specification in YAML or JSON f
 
 - When the fuzzer receives an unexpected status code, it will report it as a finding. However, many APIs do not specify client error status codes in the specification. To minimize false positive findings ignore status codes that you are not interested in with `-i` flag. It is advised to fuzz it in two stages. Firstly, run the fuzzer without `-i` flag. Then check the `results` folder for the reported findings. If there are reports from status codes you do not care about, add them via `-i` flag and rerun the fuzzer.
 - Most APIs use some base prefix for endpoints like `/v1` or `/api`, however, the specifications are sometimes written without it. Do not forget to **include the path prefix in the url**.
-- You may add an extra header with `-H` flag. It may be useful when you would like to increase coverage by providing some sort of authorization.
+- You may add an extra header with `-H` flag. It may be useful when you would like to increase coverage by providing some sort of authorization. You can use the `-H` flag to add cookies too. e.g. `-H "Cookie: A=1;"`. Use a single `-H` flag when adding multiple cookies as well. e.g. `-H "Cookie: A=1; B=2; C=3;"`.
 - Currently, the fuzzer makes 256 requests per endpoint. If all received responses are expected, it declares the endpoint as ok and continues to fuzz the next one. You can adjust this number by setting a `--max-test-case-count` flag.
 
 ```console
@@ -103,7 +103,7 @@ Options:
                     supplied, statistics will not be saved
   --help            display usage information
 
-$ openapi-fuzzer run -s ./spec.yaml -u http://127.0.0.1:8200/v1/ -i 404 -i 400
+$ openapi-fuzzer run -s ./spec.yaml -u http://127.0.0.1:8200/v1/ -i 404 -i 400 -H  "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="
 ```
 
 ### Replaying findings
