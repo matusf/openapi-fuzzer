@@ -19,7 +19,7 @@ use proptest::{
     test_runner::{Config, FileFailurePersistence, TestCaseError, TestError, TestRunner},
 };
 use serde::{Deserialize, Serialize};
-use ureq::OrAnyStatus;
+use ureq::{Agent, OrAnyStatus};
 use url::Url;
 
 use crate::{
@@ -49,6 +49,7 @@ pub struct Fuzzer {
     max_test_case_count: u32,
     results_dir: PathBuf,
     stats_dir: Option<PathBuf>,
+    agent: Agent,
 }
 
 impl Fuzzer {
@@ -60,6 +61,7 @@ impl Fuzzer {
         max_test_case_count: u32,
         results_dir: PathBuf,
         stats_dir: Option<PathBuf>,
+        agent: Agent,
     ) -> Fuzzer {
         Fuzzer {
             schema,
@@ -69,6 +71,7 @@ impl Fuzzer {
             max_test_case_count,
             results_dir,
             stats_dir,
+            agent,
         }
     }
 
@@ -129,6 +132,7 @@ impl Fuzzer {
                             method,
                             &payload,
                             &self.extra_headers,
+                            &self.agent,
                         )
                         .map_err(|e| {
                             TestCaseError::Fail(format!("unable to send request: {e}").into())
@@ -172,11 +176,12 @@ impl Fuzzer {
         method: &str,
         payload: &Payload,
         extra_headers: &HashMap<String, String>,
+        agent: &Agent,
     ) -> Result<ureq::Response> {
         for (name, value) in payload.path_params().iter() {
             path_with_params = path_with_params.replace(&format!("{{{name}}}"), value);
         }
-        let mut request = ureq::request_url(method, &url.join(&path_with_params)?);
+        let mut request = agent.request_url(method, &url.join(&path_with_params)?);
 
         for (param, value) in payload.query_params().iter() {
             request = request.query(param, value);

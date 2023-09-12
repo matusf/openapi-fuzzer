@@ -1,6 +1,7 @@
 mod arbitrary;
 mod fuzzer;
 mod stats;
+mod verifier;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -64,6 +65,9 @@ struct RunArgs {
     /// will not be saved
     #[argh(option)]
     stats_dir: Option<PathBuf>,
+
+    #[argh(switch, description = "disable verification of TLS certificates")]
+    skip_tls_verify: bool,
 }
 
 #[derive(FromArgs, Debug, PartialEq)]
@@ -81,6 +85,9 @@ struct ResendArgs {
     /// url of api
     #[argh(option, short = 'u')]
     url: UrlWithTrailingSlash,
+
+    #[argh(switch, description = "disable verification of TLS certificates")]
+    skip_tls_verify: bool,
 }
 
 #[derive(Debug, PartialEq)]
@@ -139,6 +146,8 @@ fn main() -> Result<ExitCode> {
                 serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
             let openapi_schema = openapi_schema.deref_all();
 
+            let agent = create_agent(!args.skip_tls_verify);
+
             let now = Instant::now();
             let exit_code = Fuzzer::new(
                 openapi_schema,
@@ -148,6 +157,7 @@ fn main() -> Result<ExitCode> {
                 args.max_test_case_count,
                 args.results_dir,
                 args.stats_dir,
+                agent,
             )
             .run()?;
             println!("Elapsed time: {}s", now.elapsed().as_secs());
@@ -157,12 +167,16 @@ fn main() -> Result<ExitCode> {
             let json = fs::read_to_string(&args.file)
                 .context(format!("Unable to read {:?}", &args.file))?;
             let result: FuzzResult = serde_json::from_str(&json)?;
+
+            let agent = create_agent(!args.skip_tls_verify);
+
             let response = Fuzzer::send_request(
                 &args.url.into(),
                 result.path.to_owned(),
                 result.method,
                 &result.payload,
                 &args.header.into_iter().map(Into::into).collect(),
+                &agent,
             )?;
             eprintln!("{} ({})", response.status(), response.status_text());
             println!("{}", response.into_string()?);
@@ -171,4 +185,15 @@ fn main() -> Result<ExitCode> {
     };
 
     Ok(exit_code)
+}
+
+fn create_agent(verify_cert: bool) -> ureq::Agent {
+    if verify_cert {
+        ureq::agent()
+    } else {
+        let conf = verifier::skip_tls_verification_config();
+        ureq::AgentBuilder::new()
+            .tls_config(std::sync::Arc::new(conf))
+            .build()
+    }
 }
