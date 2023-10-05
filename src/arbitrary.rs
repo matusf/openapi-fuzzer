@@ -108,77 +108,53 @@ impl Arbitrary for OptionalJSON {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
-struct Headers(Vec<(String, String)>);
+struct Parameters {
+    headers: Vec<(String, String)>,
+    path: Vec<(String, String)>,
+    query: Vec<(String, String)>,
+}
 
-impl Arbitrary for Headers {
+impl Arbitrary for Parameters {
     type Parameters = Rc<ArbitraryParameters>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        args.operation
-            .parameters
-            .iter()
-            .filter_map(|ref_or_param| match ref_or_param.to_item_ref() {
+        let mut headers = vec![];
+        let mut path_parameters = vec![];
+        let mut query_parameters = vec![];
+
+        args.operation.parameters.iter().for_each(|ref_or_param| {
+            match ref_or_param.to_item_ref() {
                 Parameter::Header { parameter_data, .. } => {
-                    Some((Just(parameter_data.name.clone()), "[!-~ \t]*"))
+                    // Generate headers following the HTTP/1.1 RFC
+                    // https://datatracker.ietf.org/doc/html/rfc7230#section-3.2
+                    headers.push((Just(parameter_data.name.clone()), "[!-~ \t]*"))
                 }
-                _ => None,
+                Parameter::Query { parameter_data, .. } => {
+                    query_parameters.push((Just(parameter_data.name.clone()), any::<String>()))
+                }
+                Parameter::Path { parameter_data, .. } => {
+                    path_parameters.push((Just(parameter_data.name.clone()), any::<String>()))
+                }
+                Parameter::Cookie { .. } => {}
+            };
+        });
+
+        (headers, path_parameters, query_parameters)
+            .prop_map(|(headers, path, query)| Parameters {
+                headers,
+                path,
+                query,
             })
-            .collect::<Vec<_>>()
-            .prop_map(Headers)
             .boxed()
     }
-    type Strategy = BoxedStrategy<Headers>;
-}
 
-#[derive(Debug, Deserialize, Serialize)]
-struct PathParams(Vec<(String, String)>);
-
-impl Arbitrary for PathParams {
-    type Parameters = Rc<ArbitraryParameters>;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        let mut path_params = vec![];
-        for ref_or_param in &args.operation.parameters {
-            match ref_or_param.to_item_ref() {
-                Parameter::Path { parameter_data, .. } => {
-                    path_params.push((Just(parameter_data.name.clone()), any::<String>()));
-                }
-                _ => continue,
-            }
-        }
-        path_params.prop_map(PathParams).boxed()
-    }
-    type Strategy = BoxedStrategy<PathParams>;
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct QueryParams(Vec<(String, String)>);
-
-impl Arbitrary for QueryParams {
-    type Parameters = Rc<ArbitraryParameters>;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        let mut query_params = vec![];
-        for ref_or_param in &args.operation.parameters {
-            match ref_or_param.to_item_ref() {
-                Parameter::Query { parameter_data, .. } => {
-                    query_params.push((Just(parameter_data.name.clone()), any::<String>()));
-                }
-                _ => continue,
-            }
-        }
-        query_params.prop_map(QueryParams).boxed()
-    }
-    type Strategy = BoxedStrategy<QueryParams>;
+    type Strategy = BoxedStrategy<Parameters>;
 }
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Payload {
-    query_params: QueryParams,
-    path_params: PathParams,
-    headers: Headers,
+    parameters: Parameters,
     body: OptionalJSON,
-    // TODO: add cookies
 }
 
 impl Arbitrary for Payload {
@@ -187,33 +163,23 @@ impl Arbitrary for Payload {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         let args = args;
-        any_with::<(QueryParams, PathParams, Headers, OptionalJSON)>((
-            args.clone(),
-            args.clone(),
-            args.clone(),
-            args,
-        ))
-        .prop_map(|(query_params, path_params, headers, body)| Payload {
-            query_params,
-            path_params,
-            headers,
-            body,
-        })
-        .boxed()
+        any_with::<(Parameters, OptionalJSON)>((args.clone(), args))
+            .prop_map(|(parameters, body)| Payload { parameters, body })
+            .boxed()
     }
 }
 
 impl Payload {
     pub fn query_params(&self) -> &[(String, String)] {
-        &self.query_params.0
+        &self.parameters.query
     }
 
     pub fn path_params(&self) -> &[(String, String)] {
-        &self.path_params.0
+        &self.parameters.path
     }
 
     pub fn headers(&self) -> &[(String, String)] {
-        &self.headers.0
+        &self.parameters.headers
     }
 
     pub fn body(&self) -> Option<&serde_json::Value> {
@@ -297,7 +263,7 @@ mod test {
         }
     }
 
-    fn get_headers() -> BoxedStrategy<Headers> {
+    fn get_parameters() -> BoxedStrategy<Parameters> {
         let operation = Operation {
             parameters: vec![ReferenceOr::Item(Parameter::Header {
                 parameter_data: ParameterData {
@@ -315,7 +281,7 @@ mod test {
             })],
             ..Default::default()
         };
-        Headers::arbitrary_with(Rc::new(ArbitraryParameters { operation }))
+        Parameters::arbitrary_with(Rc::new(ArbitraryParameters { operation }))
     }
 
     fn is_valid_header_value_char(b: u8) -> bool {
@@ -327,9 +293,9 @@ mod test {
 
     proptest! {
         #[test]
-        fn test_headers(headers in get_headers()) {
-            println!("{:?}",headers);
-            prop_assert!(headers.0.iter().all(|(_, v)| v.bytes().all(is_valid_header_value_char)));
+        fn test_headers(parameters in get_parameters()) {
+            println!("{:?}", parameters);
+            prop_assert!(parameters.headers.iter().all(|(_, v)| v.bytes().all(is_valid_header_value_char)));
         }
     }
 }
