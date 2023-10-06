@@ -1,7 +1,10 @@
 use std::{iter::FromIterator, rc::Rc};
 
 use openapi_utils::ReferenceOrExt;
-use openapiv3::{ArrayType, ObjectType, Operation, Parameter, SchemaKind, Type};
+use openapiv3::{
+    ArrayType, ObjectType, Operation, Parameter, ParameterData, ParameterSchemaOrContent,
+    SchemaKind, Type,
+};
 
 use proptest::{
     arbitrary::any,
@@ -76,6 +79,28 @@ fn any_json(schema_kind: &SchemaKind) -> impl Strategy<Value = serde_json::Value
     schema_kind_to_json(schema_kind)
 }
 
+fn parameter_data_to_strategy(
+    parameter_data: &ParameterData,
+    string_strategy: impl Strategy<Value = String> + 'static,
+) -> (Just<String>, impl Strategy<Value = String>) {
+    let ParameterSchemaOrContent::Schema(schema) = &parameter_data.format else {
+        return (Just(parameter_data.name.clone()), string_strategy.boxed());
+    };
+
+    let SchemaKind::Type(schema_type) = &schema.to_item_ref().schema_kind else {
+        return (Just(parameter_data.name.clone()), string_strategy.boxed());
+    };
+
+    let value = match &schema_type {
+        Type::Boolean {} => any::<bool>().prop_map(|i| i.to_string()).boxed(),
+        Type::Integer(_integer_type) => any::<i64>().prop_map(|i| i.to_string()).boxed(),
+        Type::Number(_number_type) => any::<f32>().prop_map(|i| i.to_string()).boxed(),
+        _ => string_strategy.boxed(),
+    };
+
+    (Just(parameter_data.name.clone()), value)
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct OptionalJSON(Option<serde_json::Value>);
 
@@ -127,13 +152,13 @@ impl Arbitrary for Parameters {
                 Parameter::Header { parameter_data, .. } => {
                     // Generate headers following the HTTP/1.1 RFC
                     // https://datatracker.ietf.org/doc/html/rfc7230#section-3.2
-                    headers.push((Just(parameter_data.name.clone()), "[!-~ \t]*"))
+                    headers.push(parameter_data_to_strategy(parameter_data, "[!-~ \t]*"));
                 }
                 Parameter::Query { parameter_data, .. } => {
-                    query_parameters.push((Just(parameter_data.name.clone()), any::<String>()))
+                    query_parameters.push(parameter_data_to_strategy(parameter_data, ".*"));
                 }
                 Parameter::Path { parameter_data, .. } => {
-                    path_parameters.push((Just(parameter_data.name.clone()), any::<String>()))
+                    path_parameters.push(parameter_data_to_strategy(parameter_data, ".*"));
                 }
                 Parameter::Cookie { .. } => {}
             };
@@ -193,8 +218,8 @@ mod test {
     use anyhow::Result;
     use indexmap::indexmap;
     use openapiv3::{
-        HeaderStyle, IntegerType, ParameterData, ParameterSchemaOrContent, ReferenceOr, Schema,
-        StringType,
+        HeaderStyle, IntegerType, NumberType, ParameterData, ParameterSchemaOrContent, PathStyle,
+        QueryStyle, ReferenceOr, Schema, SchemaData, StringType,
     };
     use proptest::{
         prop_assert, proptest,
@@ -263,22 +288,109 @@ mod test {
         }
     }
 
-    fn get_parameters() -> BoxedStrategy<Parameters> {
-        let operation = Operation {
-            parameters: vec![ReferenceOr::Item(Parameter::Header {
+    enum ParameterType {
+        Query,
+        Header,
+        Path,
+    }
+
+    fn create_parameter(
+        parameter_type: ParameterType,
+        name: &str,
+        schema_kind: Option<SchemaKind>,
+    ) -> ReferenceOr<Parameter> {
+        let format = match schema_kind {
+            Some(schema_kind) => ParameterSchemaOrContent::Schema(ReferenceOr::Item(Schema {
+                schema_data: SchemaData::default(),
+                schema_kind: schema_kind,
+            })),
+            None => ParameterSchemaOrContent::Content(Default::default()),
+        };
+
+        match parameter_type {
+            ParameterType::Query => ReferenceOr::Item(Parameter::Query {
                 parameter_data: ParameterData {
-                    name: "foo".to_owned(),
+                    name: name.into(),
                     description: None,
                     required: false,
                     deprecated: None,
-                    format: ParameterSchemaOrContent::Content(Default::default()),
+                    format,
+                    example: None,
+                    examples: Default::default(),
+                    explode: None,
+                    extensions: Default::default(),
+                },
+                style: QueryStyle::Form,
+                allow_reserved: false,
+                allow_empty_value: None,
+            }),
+            ParameterType::Header => ReferenceOr::Item(Parameter::Header {
+                parameter_data: ParameterData {
+                    name: name.into(),
+                    description: None,
+                    required: false,
+                    deprecated: None,
+                    format,
                     example: None,
                     examples: Default::default(),
                     explode: None,
                     extensions: Default::default(),
                 },
                 style: HeaderStyle::Simple,
-            })],
+            }),
+            ParameterType::Path => ReferenceOr::Item(Parameter::Path {
+                parameter_data: ParameterData {
+                    name: name.into(),
+                    description: None,
+                    required: false,
+                    deprecated: None,
+                    format,
+                    example: None,
+                    examples: Default::default(),
+                    explode: None,
+                    extensions: Default::default(),
+                },
+                style: PathStyle::Simple,
+            }),
+        }
+    }
+
+    fn create_parameters() -> BoxedStrategy<Parameters> {
+        let operation = Operation {
+            parameters: vec![
+                create_parameter(ParameterType::Header, "string-header", None),
+                create_parameter(ParameterType::Path, "string-path", None),
+                create_parameter(
+                    ParameterType::Path,
+                    "float",
+                    Some(SchemaKind::Type(Type::Number(NumberType::default()))),
+                ),
+                create_parameter(
+                    ParameterType::Path,
+                    "int",
+                    Some(SchemaKind::Type(Type::Integer(IntegerType::default()))),
+                ),
+                create_parameter(
+                    ParameterType::Path,
+                    "bool",
+                    Some(SchemaKind::Type(Type::Boolean {})),
+                ),
+                create_parameter(
+                    ParameterType::Query,
+                    "float",
+                    Some(SchemaKind::Type(Type::Number(NumberType::default()))),
+                ),
+                create_parameter(
+                    ParameterType::Query,
+                    "int",
+                    Some(SchemaKind::Type(Type::Integer(IntegerType::default()))),
+                ),
+                create_parameter(
+                    ParameterType::Query,
+                    "bool",
+                    Some(SchemaKind::Type(Type::Boolean {})),
+                ),
+            ],
             ..Default::default()
         };
         Parameters::arbitrary_with(Rc::new(ArbitraryParameters { operation }))
@@ -293,9 +405,21 @@ mod test {
 
     proptest! {
         #[test]
-        fn test_headers(parameters in get_parameters()) {
-            println!("{:?}", parameters);
-            prop_assert!(parameters.headers.iter().all(|(_, v)| v.bytes().all(is_valid_header_value_char)));
+        fn test_parameters(parameters in create_parameters()) {
+            for (name, value) in parameters.path.into_iter().chain(parameters.headers).chain(parameters.query) {
+                if name == "float" {
+                    prop_assert!(value.parse::<f32>().is_ok());
+                }
+                if name == "int" {
+                    prop_assert!(value.parse::<i64>().is_ok());
+                }
+                if name == "bool" {
+                    prop_assert!(value.parse::<bool>().is_ok());
+                }
+                if name == "string-header"{
+                    prop_assert!(value.bytes().all(is_valid_header_value_char));
+                }
+            }
         }
     }
 }
