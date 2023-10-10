@@ -172,7 +172,7 @@ fn main() -> Result<ExitCode> {
 
             let response = Fuzzer::send_request(
                 &args.url.into(),
-                result.path.to_owned(),
+                result.path,
                 result.method,
                 &result.payload,
                 &args.header.into_iter().map(Into::into).collect(),

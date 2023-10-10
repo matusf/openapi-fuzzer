@@ -7,10 +7,11 @@ use std::{
     path::{Path, PathBuf},
     process::ExitCode,
     rc::Rc,
-    time::Instant,
+    thread,
+    time::{Duration, Instant},
 };
 
-use anyhow::{Context, Error, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use indexmap::IndexMap;
 use openapi_utils::ReferenceOrExt;
 use openapiv3::{OpenAPI, ReferenceOr, Response, StatusCode};
@@ -26,6 +27,8 @@ use crate::{
     arbitrary::{ArbitraryParameters, Payload},
     stats::Stats,
 };
+
+const BACKOFF_STATUS_CODES: [u16; 2] = [429, 503];
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct FuzzResult<'a> {
@@ -126,17 +129,11 @@ impl Fuzzer {
                     &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
                     |payload| {
                         let now = Instant::now();
-                        let response = Fuzzer::send_request(
-                            &self.url,
-                            path_with_params.to_owned(),
-                            method,
-                            &payload,
-                            &self.extra_headers,
-                            &self.agent,
-                        )
-                        .map_err(|e| {
-                            TestCaseError::Fail(format!("unable to send request: {e}").into())
-                        })?;
+                        let response = self
+                            .send_request_with_backoff(path_with_params, method, &payload)
+                            .map_err(|e| {
+                                TestCaseError::Fail(format!("unable to send request: {e}").into())
+                            })?;
 
                         let is_expected_response = self.is_expected_response(&response, &responses);
                         stats.borrow_mut().times.push(now.elapsed().as_micros());
@@ -170,14 +167,55 @@ impl Fuzzer {
         }
     }
 
+    fn send_request_with_backoff(
+        &self,
+        path_with_params: &str,
+        method: &str,
+        payload: &Payload,
+    ) -> Result<ureq::Response> {
+        let max_backoff = 10;
+
+        for backoff in 0..max_backoff {
+            let response = self.send_request_(path_with_params, method, payload)?;
+            if !BACKOFF_STATUS_CODES.contains(&response.status()) {
+                return Ok(response);
+            }
+
+            let wait_seconds = response
+                .header("Retry-After")
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(1 << backoff);
+            thread::sleep(Duration::from_millis(wait_seconds * 1000));
+        }
+
+        Err(anyhow!("max backoff threshold reached"))
+    }
+
+    fn send_request_(
+        &self,
+        path_with_params: &str,
+        method: &str,
+        payload: &Payload,
+    ) -> Result<ureq::Response> {
+        Fuzzer::send_request(
+            &self.url,
+            path_with_params,
+            method,
+            payload,
+            &self.extra_headers,
+            &self.agent,
+        )
+    }
+
     pub fn send_request(
         url: &Url,
-        mut path_with_params: String,
+        path_with_params: &str,
         method: &str,
         payload: &Payload,
         extra_headers: &HashMap<String, String>,
         agent: &Agent,
     ) -> Result<ureq::Response> {
+        let mut path_with_params = path_with_params.to_owned();
         for (name, value) in payload.path_params().iter() {
             path_with_params = path_with_params.replace(&format!("{{{name}}}"), value);
         }
