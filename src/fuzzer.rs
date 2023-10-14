@@ -43,38 +43,33 @@ pub struct FuzzStats {
     did_failed: Vec<bool>,
 }
 
-#[derive(Debug)]
+pub type RequestSender = Box<dyn Fn(&str, &str, &Payload) -> Result<ureq::Response>>;
+
 pub struct Fuzzer {
     schema: OpenAPI,
-    url: Url,
     ignored_status_codes: Vec<u16>,
-    extra_headers: HashMap<String, String>,
     max_test_case_count: u32,
     results_dir: PathBuf,
     stats_dir: Option<PathBuf>,
-    agent: Agent,
+    request_sender: RequestSender,
 }
 
 impl Fuzzer {
     pub fn new(
         schema: OpenAPI,
-        url: Url,
         ignored_status_codes: Vec<u16>,
-        extra_headers: HashMap<String, String>,
         max_test_case_count: u32,
         results_dir: PathBuf,
         stats_dir: Option<PathBuf>,
-        agent: Agent,
+        request_sender: RequestSender,
     ) -> Fuzzer {
         Fuzzer {
             schema,
-            url,
             ignored_status_codes,
-            extra_headers,
             max_test_case_count,
             results_dir,
             stats_dir,
-            agent,
+            request_sender,
         }
     }
 
@@ -129,8 +124,7 @@ impl Fuzzer {
                     &any_with::<Payload>(Rc::new(ArbitraryParameters::new(operation))),
                     |payload| {
                         let now = Instant::now();
-                        let response = self
-                            .send_request_with_backoff(path_with_params, method, &payload)
+                        let response = (self.request_sender)(path_with_params, method, &payload)
                             .map_err(|e| {
                                 TestCaseError::Fail(format!("unable to send request: {e}").into())
                             })?;
@@ -167,16 +161,19 @@ impl Fuzzer {
         }
     }
 
-    fn send_request_with_backoff(
-        &self,
+    pub fn send_request_with_backoff(
+        url: &Url,
         path_with_params: &str,
         method: &str,
         payload: &Payload,
+        extra_headers: &HashMap<String, String>,
+        agent: &Agent,
     ) -> Result<ureq::Response> {
         let max_backoff = 10;
 
         for backoff in 0..max_backoff {
-            let response = self.send_request_(path_with_params, method, payload)?;
+            let response =
+                Fuzzer::send_request(url, path_with_params, method, payload, extra_headers, agent)?;
             if !BACKOFF_STATUS_CODES.contains(&response.status()) {
                 return Ok(response);
             }
@@ -189,22 +186,6 @@ impl Fuzzer {
         }
 
         Err(anyhow!("max backoff threshold reached"))
-    }
-
-    fn send_request_(
-        &self,
-        path_with_params: &str,
-        method: &str,
-        payload: &Payload,
-    ) -> Result<ureq::Response> {
-        Fuzzer::send_request(
-            &self.url,
-            path_with_params,
-            method,
-            payload,
-            &self.extra_headers,
-            &self.agent,
-        )
     }
 
     pub fn send_request(
