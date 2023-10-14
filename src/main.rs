@@ -3,6 +3,7 @@ mod fuzzer;
 mod stats;
 mod verifier;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::str::FromStr;
@@ -68,6 +69,10 @@ struct RunArgs {
 
     #[argh(switch, description = "disable verification of TLS certificates")]
     skip_tls_verify: bool,
+
+    /// do not use rate limiting
+    #[argh(switch)]
+    no_rate_limiting: bool,
 }
 
 #[derive(FromArgs, Debug, PartialEq)]
@@ -146,18 +151,20 @@ fn main() -> Result<ExitCode> {
                 serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
             let openapi_schema = openapi_schema.deref_all();
 
-            let agent = create_agent(!args.skip_tls_verify);
-
+            let request_sender = create_sender(
+                create_agent(!args.skip_tls_verify),
+                args.url.into(),
+                args.header.into_iter().map(Into::into).collect(),
+                args.no_rate_limiting,
+            );
             let now = Instant::now();
             let exit_code = Fuzzer::new(
                 openapi_schema,
-                args.url.into(),
                 args.ignore_status_code,
-                args.header.into_iter().map(Into::into).collect(),
                 args.max_test_case_count,
                 args.results_dir,
                 args.stats_dir,
-                agent,
+                request_sender,
             )
             .run()?;
             println!("Elapsed time: {}s", now.elapsed().as_secs());
@@ -195,5 +202,36 @@ fn create_agent(verify_cert: bool) -> ureq::Agent {
         ureq::AgentBuilder::new()
             .tls_config(std::sync::Arc::new(conf))
             .build()
+    }
+}
+
+fn create_sender(
+    agent: ureq::Agent,
+    url: Url,
+    extra_headers: HashMap<String, String>,
+    no_rate_limiting: bool,
+) -> fuzzer::RequestSender {
+    if no_rate_limiting {
+        Box::new(move |path_with_params, method, payload| {
+            Fuzzer::send_request(
+                &url,
+                path_with_params,
+                method,
+                payload,
+                &extra_headers,
+                &agent,
+            )
+        })
+    } else {
+        Box::new(move |path_with_params, method, payload| {
+            Fuzzer::send_request_with_backoff(
+                &url,
+                path_with_params,
+                method,
+                payload,
+                &extra_headers,
+                &agent,
+            )
+        })
     }
 }
