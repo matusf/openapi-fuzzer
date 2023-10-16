@@ -81,10 +81,12 @@ OpenAPI fuzzer supports version 3 of the OpenAPI specification in YAML or JSON f
 - Most APIs use some base prefix for endpoints like `/v1` or `/api`, however, the specifications are sometimes written without it. Do not forget to **include the path prefix in the url**.
 - You may add an extra header with `-H` flag. It may be useful when you would like to increase coverage by providing some sort of authorization. You can use the `-H` flag to add cookies too. e.g. `-H "Cookie: A=1;"`. Use a single `-H` flag when adding multiple cookies as well. e.g. `-H "Cookie: A=1; B=2; C=3;"`.
 - Currently, the fuzzer makes 256 requests per endpoint. If all received responses are expected, it declares the endpoint as ok and continues to fuzz the next one. You can adjust this number by setting a `--max-test-case-count` flag.
+- To disable the verification of TLS certificates and thus use, for example, self-signed certificates, you can use the --skip-tls-verify flag.
+- By default, the fuzzer uses rate limiting. If it receives an HTTP status code of 429 or 503, it will wait for a number of seconds specified by the `Retry-After` header. If the header is not present, it will use an exponential backoff algorithm with a starting value of 1 second. After 10 unsuccessful retries, fuzzing of the endpoint is aborted.
 
 ```console
 $ openapi-fuzzer run --help
-Usage: openapi-fuzzer run -s <spec> -u <url> [-i <ignore-status-code>] [-H <header>] [--max-test-case-count <max-test-case-count>] [-o <results-dir>] [--stats-dir <stats-dir>]
+Usage: openapi-fuzzer run -s <spec> -u <url> [-i <ignore-status-code>] [-H <header>] [--max-test-case-count <max-test-case-count>] [-o <results-dir>] [--stats-dir <stats-dir>] [--skip-tls-verify] [--no-rate-limiting]
 
 run openapi-fuzzer
 
@@ -101,6 +103,9 @@ Options:
                     for resending requests (default: results).
   --stats-dir       directory for request times statistics. if no value is
                     supplied, statistics will not be saved
+  --skip-tls-verify disable verification of TLS certificates
+  --no-rate-limiting
+                    do not use rate limiting
   --help            display usage information
 
 $ openapi-fuzzer run -s ./spec.yaml -u http://127.0.0.1:8200/v1/ -i 404 -i 400 -H  "Authorization: Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ=="
