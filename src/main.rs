@@ -32,13 +32,32 @@ enum Subcommands {
     Resend(ResendArgs),
 }
 
+// Enum to allow passing URLs and local files as OpenApi spec file
+#[derive(PartialEq, Debug)]
+enum SpecFile {
+    Url(Url),
+    Path(PathBuf),
+}
+
+impl FromStr for SpecFile {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.starts_with("http://") || s.starts_with("https://") {
+            Ok(SpecFile::Url(Url::from_str(s)?))
+        } else {
+            Ok(SpecFile::Path(PathBuf::from(s)))
+        }
+    }
+}
+
 #[derive(FromArgs, Debug, PartialEq)]
 /// run openapi-fuzzer
 #[argh(subcommand, name = "run")]
 struct RunArgs {
     /// path to OpenAPI specification file
     #[argh(option, short = 's')]
-    spec: PathBuf,
+    spec: SpecFile,
 
     /// url of api to fuzz
     #[argh(option, short = 'u')]
@@ -145,8 +164,23 @@ fn main() -> Result<ExitCode> {
 
     let exit_code = match args.subcommands {
         Subcommands::Run(args) => {
-            let specfile = std::fs::read_to_string(&args.spec)
-                .context(format!("Unable to read {:?}", &args.spec))?;
+            // Read spec file from URL or local file
+
+            let specfile = match args.spec {
+                SpecFile::Url(url) => {
+                    // Skip TLS verification if requested
+                    let spec_agent = create_agent(!args.skip_tls_verify);
+                    spec_agent
+                        .get(url.as_ref())
+                        .call()
+                        .context(format!("Unable to fetch {:?}", url))?
+                        .into_string()?
+                }
+                SpecFile::Path(path) => {
+                    std::fs::read_to_string(&path).context(format!("Unable to read {:?}", path))?
+                }
+            };
+
             let openapi_schema: OpenAPI =
                 serde_yaml::from_str(&specfile).context("Failed to parse schema")?;
             let openapi_schema = openapi_schema.deref_all();
