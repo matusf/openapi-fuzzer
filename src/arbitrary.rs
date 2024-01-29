@@ -50,7 +50,7 @@ fn generate_json_array(array: &ArrayType) -> BoxedStrategy<serde_json::Value> {
 
 fn schema_type_to_json(schema_type: &Type) -> BoxedStrategy<serde_json::Value> {
     match schema_type {
-        Type::Boolean {} => any::<bool>().prop_map_into::<serde_json::Value>().boxed(),
+        Type::Boolean(_) => any::<bool>().prop_map_into::<serde_json::Value>().boxed(),
         Type::Integer(_integer_type) => any::<i64>().prop_map_into::<serde_json::Value>().boxed(),
         Type::Number(_number_type) => any::<f32>().prop_map_into::<serde_json::Value>().boxed(),
         Type::String(_string_type) => any::<String>().prop_map_into::<serde_json::Value>().boxed(),
@@ -62,6 +62,9 @@ fn schema_type_to_json(schema_type: &Type) -> BoxedStrategy<serde_json::Value> {
 fn schema_kind_to_json(schema_kind: &SchemaKind) -> BoxedStrategy<serde_json::Value> {
     match schema_kind {
         SchemaKind::Any(_any) => any::<String>().prop_map_into::<serde_json::Value>().boxed(),
+        SchemaKind::Not { not: schema } => {
+            schema_kind_to_json(&schema.to_item_ref().schema_kind).boxed()
+        }
         SchemaKind::Type(schema_type) => schema_type_to_json(schema_type).boxed(),
         // TODO: AllOf should generate all schemas and merge them to one json object
         SchemaKind::AllOf { all_of: schemas }
@@ -92,7 +95,7 @@ fn parameter_data_to_strategy(
     };
 
     let value = match &schema_type {
-        Type::Boolean {} => any::<bool>().prop_map(|i| i.to_string()).boxed(),
+        Type::Boolean(_) => any::<bool>().prop_map(|i| i.to_string()).boxed(),
         Type::Integer(_integer_type) => any::<i64>().prop_map(|i| i.to_string()).boxed(),
         Type::Number(_number_type) => any::<f32>().prop_map(|i| i.to_string()).boxed(),
         _ => string_strategy.boxed(),
@@ -148,7 +151,7 @@ impl Arbitrary for Parameters {
         let mut query_parameters = vec![];
 
         args.operation.parameters.iter().for_each(|ref_or_param| {
-            match ref_or_param.to_item_ref() {
+            match ref_or_param {
                 Parameter::Header { parameter_data, .. } => {
                     // Generate headers following the HTTP/1.1 RFC
                     // https://datatracker.ietf.org/doc/html/rfc7230#section-3.2
@@ -218,8 +221,8 @@ mod test {
     use anyhow::Result;
     use indexmap::indexmap;
     use openapiv3::{
-        HeaderStyle, IntegerType, NumberType, ParameterData, ParameterSchemaOrContent, PathStyle,
-        QueryStyle, ReferenceOr, Schema, SchemaData, StringType,
+        BooleanType, HeaderStyle, IntegerType, NumberType, ParameterData, ParameterSchemaOrContent,
+        PathStyle, QueryStyle, ReferenceOr, Schema, SchemaData, StringType,
     };
     use proptest::{
         prop_assert, proptest,
@@ -373,7 +376,7 @@ mod test {
                 create_parameter(
                     ParameterType::Path,
                     "bool",
-                    Some(SchemaKind::Type(Type::Boolean {})),
+                    Some(SchemaKind::Type(Type::Boolean(BooleanType::default()))),
                 ),
                 create_parameter(
                     ParameterType::Query,
@@ -388,7 +391,7 @@ mod test {
                 create_parameter(
                     ParameterType::Query,
                     "bool",
-                    Some(SchemaKind::Type(Type::Boolean {})),
+                    Some(SchemaKind::Type(Type::Boolean(BooleanType::default()))),
                 ),
             ],
             ..Default::default()
